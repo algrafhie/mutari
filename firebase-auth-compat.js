@@ -347,6 +347,7 @@
   }
 
   function DocRef(col, id) { this.col = col; this.id = id; }
+  DocRef.prototype.collection = function (name) { return new CollectionRef(this.col + '/' + this.id + '/' + name); };
   DocRef.prototype.set = function (data, opts) {
     var merge = !(opts && opts.merge === false);
     return writeData(this.col, this.id, data, merge);
