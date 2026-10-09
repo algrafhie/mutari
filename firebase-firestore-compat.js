@@ -67,12 +67,34 @@
     return currentUser;
   }
 
+  /* Apakah halaman ini sedang kembali dari Google OAuth?
+     Kalau ya, JANGAN buat sesi tamu — tunggu Supabase memproses token dari URL,
+     supaya hasil login Google tidak tertimpa sesi anonim. */
+  function isOAuthCallback() {
+    var q = location.search || '', h = location.hash || '';
+    return q.indexOf('code=') >= 0 || h.indexOf('access_token=') >= 0 || h.indexOf('error_description=') >= 0;
+  }
+
   /* Pastikan selalu ada sesi: pakai yang ada, atau buat sesi tamu (anonim). */
-  function ensureGuest() {
+  function ensureGuest(force) {
     return sb().then(function (c) {
       return c.auth.getSession().then(function (r) {
         var s = r && r.data && r.data.session;
         if (s && s.user) return adoptSession(s);
+        if (!force && isOAuthCallback()) {
+          /* Biarkan proses OAuth yang menentukan; jangan buat tamu dulu. */
+          return new Promise(function (resolve) {
+            var n = 0;
+            var t = setInterval(function () {
+              n++;
+              c.auth.getSession().then(function (r2) {
+                var s2 = r2 && r2.data && r2.data.session;
+                if (s2 && s2.user) { clearInterval(t); resolve(adoptSession(s2)); }
+                else if (n > 40) { clearInterval(t); resolve(ensureGuest(true)); }
+              }).catch(function () { if (n > 40) { clearInterval(t); resolve(null); } });
+            }, 250);
+          });
+        }
         return c.auth.signInAnonymously().then(function (res) {
           if (res.error) { console.warn('[MUTARI] sesi tamu gagal:', res.error.message); return null; }
           return adoptSession(res.data && res.data.session);
@@ -98,17 +120,16 @@
     authReadyResolve(currentUser);
   });
 
-  var pendingRedirect = null;
+  /* Selalu periksa sesi TERBARU — jangan cache hasil null, supaya login Google
+     yang baru selesai tidak terlewat. */
   function redirectResultPromise() {
-    if (pendingRedirect) return pendingRedirect;
-    pendingRedirect = sb().then(function (c) {
+    return sb().then(function (c) {
       return c.auth.getSession().then(function (r) {
         var u = r && r.data && r.data.session && r.data.session.user;
-        if (u) { currentUser = mapUser(u); notifyAuth(); return { user: currentUser }; }
+        if (u && u.email) { currentUser = mapUser(u); notifyAuth(); return { user: currentUser }; }
         return null;
       });
     }).catch(function () { return null; });
-    return pendingRedirect;
   }
 
   function authObj() {
@@ -347,6 +368,7 @@
   }
 
   function DocRef(col, id) { this.col = col; this.id = id; }
+  /* Subcollection: chats/<id>/messages dan users/<key>/devices dipakai aplikasi. */
   DocRef.prototype.collection = function (name) { return new CollectionRef(this.col + '/' + this.id + '/' + name); };
   DocRef.prototype.set = function (data, opts) {
     var merge = !(opts && opts.merge === false);
@@ -399,7 +421,9 @@
   };
 
   function Query(col, filters, order, lim) {
-    this.col = col; this.filters = filters || []; this.order = order || null; this.lim = lim || 0;
+    this.col = col; this.filters = filters || []; this.order = order || null;
+    /* PENTING: simpan sebagai .lim — memakai .limit akan menimpa method limit(). */
+    this.lim = lim || 0;
   }
   Query.prototype.where = function (f, op, v) { return new Query(this.col, this.filters.concat([{ f: f, op: op, v: v }]), this.order, this.lim); };
   Query.prototype.orderBy = function (f, dir) { return new Query(this.col, this.filters, { f: f, dir: dir || 'asc' }, this.lim); };
