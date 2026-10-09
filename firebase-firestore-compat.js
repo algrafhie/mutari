@@ -252,7 +252,7 @@
         return q.order.dir === 'desc' ? -r : r;
       });
     }
-    if (q.limit) out = out.slice(0, q.limit);
+    if (q.lim) out = out.slice(0, q.lim);
     return out;
   }
 
@@ -397,11 +397,11 @@
     return function () { var i = queryListeners.indexOf(L); if (i >= 0) queryListeners.splice(i, 1); };
   };
 
-  function Query(col, filters, order, limit) {
-    this.col = col; this.filters = filters || []; this.order = order || null; this.limit = limit || 0;
+  function Query(col, filters, order, lim) {
+    this.col = col; this.filters = filters || []; this.order = order || null; this.lim = lim || 0;
   }
-  Query.prototype.where = function (f, op, v) { return new Query(this.col, this.filters.concat([{ f: f, op: op, v: v }]), this.order, this.limit); };
-  Query.prototype.orderBy = function (f, dir) { return new Query(this.col, this.filters, { f: f, dir: dir || 'asc' }, this.limit); };
+  Query.prototype.where = function (f, op, v) { return new Query(this.col, this.filters.concat([{ f: f, op: op, v: v }]), this.order, this.lim); };
+  Query.prototype.orderBy = function (f, dir) { return new Query(this.col, this.filters, { f: f, dir: dir || 'asc' }, this.lim); };
   Query.prototype.limit = function (n) { return new Query(this.col, this.filters, this.order, n); };
   Query.prototype.doc = function (id) { return new DocRef(this.col, id || (Math.random().toString(36).slice(2) + Date.now().toString(36))); };
   Query.prototype.add = function (data) {
