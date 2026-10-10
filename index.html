@@ -3,7 +3,7 @@
   MUTARI — Barter & Marketplace
   ==============================
   Versi   : 1.12.0
-  Build   : 119
+  Build   : 120
   Berkas  : index.html (GitHub) · mutari-app-v1.9.78.html (uji langsung)
   Logo    : TERTANAM inline (base64) di dalam berkas ini — JANGAN dihapus.
   Tema    : hanya GELAP (fitur mode terang sudah dihapus).
@@ -2051,13 +2051,13 @@ const state = {
 };
 
 const APP_VERSION = '1.12.0';
-const APP_BUILD = 119;
+const APP_BUILD = 120;
 const ACCOUNT_HISTORY_MAX=1;   /* v1.9.70: halaman login hanya menampilkan akun terakhir dipakai */
 /* OAuth Client ID (Web) untuk login Google sungguhan. Kosongkan untuk memakai form email.
    Bisa juga diatur dari Pengaturan -> Google Client ID (tersimpan lokal). */
 const GOOGLE_CLIENT_ID = '';
 const CHANGELOG = [
-  ['1.12.0','AKUN GOOGLE + PETA TITIK TEMU DIPERBAIKI. (1) LOGIN GOOGLE tidak lagi tertahan di layar pendaftaran — sebelumnya login hanya dicoba SEKALI setelah kembali dari Google, sehingga bila sesi Supabase belum siap aplikasi tetap menampilkan layar masuk walaupun sebenarnya sudah masuk; kini login diselesaikan begitu sesi Google benar-benar siap, dengan pengaman agar tidak diproses dua kali dan tidak mengambil alih akun email/admin. (2) PENGGUNA GOOGLE WAJIB MEMBUAT PASSWORD MUTARI — akun Google yang belum punya password diminta membuatnya lewat DUA KOLOM (password + konfirmasi), lalu password disimpan ke AKUN (Supabase Auth) sehingga berlaku di SEMUA perangkat; daftar manual tidak diubah. (3) PETA TITIK TEMU COD dihidupkan kembali dengan menyambungkan mesin peta lama ke tombol yang sudah ada: Auto 1-Klik kini benar-benar mencari lokasi aman & ramai lalu menampilkan peta, dan Pilih Manual di Peta kini benar-benar membuka peta yang bisa diketuk serta MENYIMPAN koordinat — sebelumnya koordinat tidak tersimpan sehingga peta tidak pernah muncul dan tautan Google Maps mati. Tombol, nama, dan alur (usul lalu disetujui pihak lain) tidak berubah. (4) FOTO PROFIL pengguna lain kini tampil di beranda dan halaman postingan — foto diunggah ke penyimpanan cloud dan alamatnya dibagikan lewat dokumen pengguna, bukan hanya tersimpan di HP pemiliknya, dan bila unggahan ke penyimpanan cloud gagal (misalnya bucket belum publik), foto diperkecil lalu disimpan sebagai teks gambar sebagai cadangan supaya tetap terlihat pengguna lain. Tidak ada perubahan lain pada cara kerja sistem MUTARI.'],
+  ['1.12.0','AKUN GOOGLE + PETA TITIK TEMU DIPERBAIKI. (1) LOGIN GOOGLE tidak lagi tertahan di layar pendaftaran — sebelumnya login hanya dicoba SEKALI setelah kembali dari Google, sehingga bila sesi Supabase belum siap aplikasi tetap menampilkan layar masuk walaupun sebenarnya sudah masuk; kini login diselesaikan begitu sesi Google benar-benar siap, dengan pengaman agar tidak diproses dua kali dan tidak mengambil alih akun email/admin. (2) PENGGUNA GOOGLE WAJIB MEMBUAT PASSWORD MUTARI — akun Google yang belum punya password diminta membuatnya lewat DUA KOLOM (password + konfirmasi), lalu password disimpan ke AKUN (Supabase Auth) sehingga berlaku di SEMUA perangkat; daftar manual tidak diubah. (3) PETA TITIK TEMU COD dihidupkan kembali dengan menyambungkan mesin peta lama ke tombol yang sudah ada: Auto 1-Klik kini benar-benar mencari lokasi aman & ramai lalu menampilkan peta, dan Pilih Manual di Peta kini benar-benar membuka peta yang bisa diketuk serta MENYIMPAN koordinat — sebelumnya koordinat tidak tersimpan sehingga peta tidak pernah muncul dan tautan Google Maps mati. Tombol, nama, dan alur (usul lalu disetujui pihak lain) tidak berubah. (4) FOTO PROFIL pengguna lain kini tampil di beranda dan halaman postingan — foto diunggah ke penyimpanan cloud dan alamatnya dibagikan lewat dokumen pengguna, bukan hanya tersimpan di HP pemiliknya, dan bila unggahan ke penyimpanan cloud gagal (misalnya bucket belum publik), foto diperkecil lalu disimpan sebagai teks gambar sebagai cadangan supaya tetap terlihat pengguna lain. (5) FOTO PROFIL PENGGUNA LAIN KINI MUNCUL SEJAK AWAL: sebelumnya beranda sudah terlanjur digambar memakai inisial sebelum daftar pengguna cloud tiba, dan tidak pernah digambar ulang — foto pemilik baru terlihat setelah pindah tab lalu kembali. Kini beranda/katalog otomatis digambar ulang begitu daftar pengguna tiba (hanya bila ketersediaan foto berubah, agar tidak boros). Tidak ada perubahan lain pada cara kerja sistem MUTARI.'],
   ['1.11.2','SINKRONISASI POIN ⇄ REPUTASI DISELARASKAN. (1) Semua perubahan poin (naik maupun turun) kini lewat satu jalur wajib syncReputation(): dompet, tingkat reputasi, lencana/border, dan sanksi dihitung ulang lalu poin + tier + lencana ditulis ulang ke cloud. (2) Penyesuaian poin dari admin (adminGrants) kini ikut memicu perhitungan ulang tingkat reputasi - sebelumnya lencana/border bisa tertinggal. (3) Poin dari cloud digabung dengan aman memakai cap waktu (pointsAt): perubahan lokal yang belum terkirim tidak lagi tertimpa nilai cloud lama, dan bila perangkat lokal lebih baru nilainya didorong ke cloud. (4) Lencana tingkat naik/turun otomatis mengikuti poin di dompet, profil, border avatar, maupun portal admin. Tidak ada fitur baru; hanya penyelarasan sinkronisasi.'],
   ['1.11.1','MULAI BERSIH TOTAL. Data lama dihapus sekali lagi di setiap perangkat (semua kunci penyimpanan lokal MUTARI: data global, data per akun, daftar akun, dan sesi admin) sehingga aplikasi kembali benar-benar dari nol. Tidak ada fitur atau sistem yang diubah, ditambah, atau dihilangkan.'],
   ['1.11.0','AKUN SUNGGUHAN (UID = AKUN) + DATA TERPISAH PER AKUN. (1) Login email + sandi kini memakai FIREBASE AUTHENTICATION sungguhan (createUserWithEmailAndPassword / signInWithEmailAndPassword), jadi UID Firebase = akun dan stabil di HP mana pun; Google login juga memakai Firebase Auth. (2) Semua data akun disimpan TERPISAH per akun (kunci penyimpanan menyertakan kunci akun), sehingga pindah akun memuat data akun itu sendiri - tidak ada lagi kunci global bersama yang membuat akun baru tampak sama dengan akun lama. (3) MULAI BERSIH: data lama dihapus sekali saat pembaruan ini (daftar akun yang tersimpan tetap agar email tidak perlu diketik ulang). (4) Keluar (logout) tidak lagi menghapus data akun - data tetap tersimpan dan dimuat kembali saat masuk. PENTING: aktifkan Email/Password di Firebase Console -> Authentication -> Sign-in method.'],
@@ -3894,6 +3894,20 @@ function cloudStartUsers(){
       }catch(e){}
       try{ if(state.sub==='userprof'||state.sub==='publik') subRender(); }catch(e){}
       try{ if(state.route==='akun') render(); }catch(e){}
+      /* v1.12.5: PERBAIKAN FOTO PROFIL PENGGUNA LAIN.
+         Daftar pengguna cloud bisa tiba SESUDAH daftar barang digambar. Saat itu
+         beranda sudah terlanjur memakai inisial, dan sebelumnya TIDAK ADA yang
+         menggambar ulang, sehingga foto pemilik baru muncul setelah pindah tab dan
+         kembali. Sekarang beranda/katalog ikut digambar ulang begitu daftar pengguna
+         tiba — TAPI hanya bila ketersediaan foto benar-benar berubah, supaya tidak
+         terjadi gambar-ulang berulang tanpa henti. */
+      try{
+        var __sig=''; for(var __k in be){ __sig += (be[__k] && be[__k].avatar) ? '1' : '0'; }
+        if(__sig !== state.avatarSig){
+          state.avatarSig=__sig;
+          if(['home','barang','jasa','shop','akun'].indexOf(state.route)>=0){ render(); applyI18n(); }
+        }
+      }catch(e){}
     }, function(){});
   }catch(e){}
 }
