@@ -11659,6 +11659,63 @@ try{ if(sessionStorage.getItem('mutari_admin_mode')==='1') openAdminPortal(); }c
     document.addEventListener('DOMContentLoaded', function(){ try{ if(document.getElementById('authAccounts')) bxMoreAccounts(); }catch(e){} });
   }catch(e){}
 })();
+
+/* ================= MUTARI MODUL 6 (v1.12.0-p6) =================
+   PERBAIKAN: peta lokasi kirim pada panel detail barter.
+
+   MASALAH (temuan audit statis):
+     - negoRefresh() memanggil negMapInit(b) setiap kali panel barter
+       dirender dan b.ship.lat terisi.
+     - Tapi elemen <div id="negoMap"> TIDAK PERNAH ada di template
+       negoHtml() -> negMapInit() langsung `return` -> peta tidak tampil.
+
+   SOLUSI:
+     - Tambahkan <div id="negoMap"> ke HTML panel tepat setelah baris
+       lokasi (📍), hanya bila b.ship.lat ada. negMapInit() bawaan
+       aplikasi lalu merender peta Leaflet seperti seharusnya.
+
+   CATATAN (bintang ulasan & pratinjau bukti):
+     - "#revStars" dan "#negoProofPrev" adalah sisa versi lama.
+       Fitur yang sama SUDAH aktif di UI saat ini dengan nama lain:
+         * bintang ulasan  -> #bxStars  + bxStar(n)   (openReview)
+         * pratinjau bukti -> #bxProof  + bxProofPick (baris konfirmasi)
+       Karena itu TIDAK ditambahkan ulang, supaya tidak ada kontrol dobel.
+   =============================================================== */
+(function () {
+  try {
+    if (typeof negoHtml !== 'function') return;
+    var __origNegoHtml = negoHtml;
+
+    negoHtml = function (b) {
+      var html = __origNegoHtml.apply(this, arguments);
+      try {
+        if (!b || !b.ship || b.ship.lat == null) return html;
+        var s = String(html);
+        if (s.indexOf('id="negoMap"') >= 0) return html; /* sudah ada */
+
+        var mapDiv = '<div id="negoMap" style="height:190px;border-radius:14px;overflow:hidden;' +
+          'background:#111;border:1px solid rgba(255,255,255,.12);margin:10px 0"></div>';
+
+        /* sisipkan tepat setelah baris lokasi (📍 ...) */
+        var i = s.indexOf('\uD83D\uDCCD'); /* 📍 */
+        if (i >= 0) {
+          var j = s.indexOf('</div>', i);
+          if (j >= 0) {
+            var at = j + 6;
+            return s.slice(0, at) + mapDiv + s.slice(at);
+          }
+        }
+        /* cadangan: sisipkan sebelum area chat */
+        var m = '<div class="bx-chat">';
+        if (s.indexOf(m) >= 0) return s.replace(m, mapDiv + m);
+      } catch (e) {}
+      return html;
+    };
+
+    try { window.negoHtml = negoHtml; } catch (e) {}
+  } catch (e) {}
+})();
+
 </script>
 </body>
 </html>
