@@ -2999,43 +2999,6 @@ function openForgotStep2(email){
     }catch(e){ err('Gagal menyimpan sandi: '+((e&&e.message)||e)); }
   };
 }
-async function createPassword(){
-  const v1=$('#pw1').value, v2=$('#pw2').value;
-  const p = state.pending || {name:'Pengguna MUTARI', email:'user@mutari.id'};
-  const email=(p.email||'').toLowerCase();
-  if(isAdminEmail(email)){ handleAdminEmail(); return; }
-  const accounts=state.accounts||{};
-  const acc=accounts[email];
-  const creating=!acc;
-  const fail=m=>{ $('#pwErr').textContent=m; $('#pwErr').classList.add('show'); };
-  if(creating){
-    if(!isValidName(p.name)) return fail('Nama wajib diisi (minimal 2 huruf, bukan nama bawaan)');
-    if(!(v1.length>=6 && /\d/.test(v1))) return fail('Minimal 6 karakter dan harus ada angka');
-    if(state.pwSignup===true && v1!==v2) return fail('Konfirmasi password tidak sama');
-    accounts[email]={ name:cleanName(p.name), pass:await hashPassword(v1), hashed:true, time:Date.now() };
-    state.accounts=accounts; LS.set('mutari_accounts',accounts);
-  } else {
-    if(acc.pass){
-      const res=await verifyPassword(v1, acc.pass);
-      if(!res.ok) return fail('Password salah, coba lagi');
-      if(res.rehash){ acc.pass=await hashPassword(v1); acc.hashed=true; }
-      acc.time=Date.now(); accounts[email]=acc; state.accounts=accounts; LS.set('mutari_accounts',accounts);
-    } else {
-      acc.pass=await hashPassword(v1); acc.hashed=true; acc.time=Date.now(); accounts[email]=acc; state.accounts=accounts; LS.set('mutari_accounts',accounts);
-    }
-  }
-  const restored=applyAccount(email);
-  if(!restored){
-    const owner=LS.get('mutari_owner', null);
-    if(owner && owner!==email) resetLiveData();
-    LS.set('mutari_owner', email);
-  }
-  const cnm=cleanName((accounts[email]&&accounts[email].name)||p.name||'');
-  state.user={ name:isValidName(cnm)?cnm:'', email:email, avatar:'', verified:false, profileComplete:isValidName(cnm) };
-  LS.set('mutari_user', state.user);
-  enterApp();
-  toast(creating ? 'Akun dibuat! Data disimpan untuk email ini.' : 'Selamat datang kembali! Data akun dimuat.');
-}
 const DATA_KEYS={
   items:'mutari_items', points:'mutari_points', checkins:'mutari_checkins', activity:'mutari_activity',
   wishlist:'mutari_wishlist', history:'mutari_history', barters:'mutari_barters', prefs:'mutari_prefs', profile:'mutari_profile',
@@ -3043,44 +3006,11 @@ const DATA_KEYS={
   clubs:'mutari_clubs', chats:'mutari_chats', communities:'mutari_posts', drafts:'mutari_draftlist',
   refs:'mutari_refs', affCode:'mutari_aff', ads:'mutari_ads', boosts:'mutari_boosts', frame:'mutari_frame', superlikes:'mutari_superlikes', uploadSlots:'mutari_slots', priorityUntil:'mutari_priority', bumpUntil:'mutari_bump', lastBump:'mutari_lastbump', draws:'mutari_draws', purchases:'mutari_purchases', eventRsvp:'mutari_eventrsvp', events:'mutari_events', eventAward:'mutari_eventaward', referrals:'mutari_referrals', notifLog:'mutari_notiflog', missionsClaimed:'mutari_missions', marketStats:'mutari_marketstats', geoAudit:'mutari_geoaudit', comments:'mutari_comments', extraFollowers:'mutari_extrafollowers', pointsAt:'mutari_points_at'
 };
-function mirrorAccount(k){
-  try{
-    if(typeof DATA_KEYS==='undefined') return;
-    const email=(typeof state!=='undefined' && state.user && state.user.email)? state.user.email : null;
-    if(!email) return;
-    let field=null;
-    for(const f in DATA_KEYS){ if(DATA_KEYS[f]===k){ field=f; break; } }
-    if(!field) return;
-    const key='mutari_acc::'+email;
-    const b=LS.get(key,null)||{};
-    b[field]=state[field];
-    if(LS.setSafe(key,b)) return;
-    b.items=packItems(state.items,1); if(LS.setSafe(key,b)) return;
-    b.items=packItems(state.items,2); LS.setSafe(key,b);
-  }catch(e){}
-}
 function accountBundle(mode){
   const b={};
   Object.keys(DATA_KEYS).forEach(f=>{ b[f]=state[f]; });
   if(mode>0) b.items=packItems(state.items,mode);
   return b;
-}
-function snapshotAccount(email){
-  if(!email) return;
-  const key='mutari_acc::'+email;
-  if(LS.setSafe(key, accountBundle(0))) return;
-  if(LS.setSafe(key, accountBundle(1))) return;
-  LS.setSafe(key, accountBundle(2));
-  LS.set('mutari_owner', email);
-}
-function applyAccount(email){
-  const b=LS.get('mutari_acc::'+email, null);
-  if(!b) return false;
-  const keepUser=state.user; state.user=null;
-  Object.keys(DATA_KEYS).forEach(f=>{ if(b[f]!==undefined){ state[f]=b[f]; LS.set(DATA_KEYS[f], b[f]); } });
-  state.user=keepUser;
-  LS.set('mutari_owner', email);
-  return true;
 }
 function resetLiveData(){
   /* PENTING: state.cloudItems SENGAJA tidak dikosongkan di sini.
@@ -3097,16 +3027,6 @@ function resetLiveData(){
   const keepUser=state.user; state.user=null;
   Object.keys(DATA_KEYS).forEach(f=>{ LS.set(DATA_KEYS[f], state[f]); });
   state.user=keepUser;
-}
-function logout(){
-  const email=(state.user&&state.user.email)||null;
-  if(email) snapshotAccount(email);
-  closeSheet();
-  state.user=null; LS.set('mutari_user',null);
-  resetLiveData();
-  state.authMode='signin'; toggleAuth(); toggleAuth();
-  showScreen('auth');
-  toast(email ? 'Kamu sudah keluar. Data tersimpan di akun '+email : 'Kamu sudah keluar');
 }
 
 /* =================== FIREBASE CLOUD SYNC — FASE 1: PONDASI (1.9.17) ===================
@@ -3772,12 +3692,6 @@ function cloudSetVerified(v){
   if(!db||!uid||!ukey) return;
   try{ db.collection('users').doc(ukey).set({verified:!!v, verifiedAt:Date.now(), verifiedBy:'shop'},{merge:true}).catch(function(){}); }catch(e){}
 }
-function cloudPushMyItems(){
-  if(!fbOnline()) return;
-  (state.items||[]).forEach(function(it){ cloudPushItem(it); });
-  cloudSetUserDoc();
-  try{ cloudQueueFlush(); }catch(e){}
-}
 function cloudToItem(id,v){
   const st=(state.marketStats||{})[id]||{};
   return {
@@ -3800,36 +3714,6 @@ function cloudStopItems(){
   try{ if(state.cloudUnsub) state.cloudUnsub(); }catch(e){}
   state.cloudUnsub=null;
   state.cloudItems=[];
-}
-function cloudStartItems(){
-  const db=cloudDb();
-  if(!db) return;
-  /* Lepas langganan lama TANPA mengosongkan daftar yang sedang tampil, supaya
-     ketika langganan dijalankan ulang (ganti akun / masuk aplikasi) pasar tidak
-     berkedip kosong sebelum data baru datang dari Firestore. */
-  try{ if(state.cloudUnsub) state.cloudUnsub(); }catch(e){}
-  state.cloudUnsub=null;
-  try{
-    state.cloudUnsub=db.collection('items').orderBy('updatedAt','desc').limit(CLOUD_ITEM_LIMIT)
-      .onSnapshot(function(snap){
-        const uid=cloudUid(), myMail=String(myEmail()||'').toLowerCase(), out=[], mine=[];
-        snap.forEach(function(d){
-          const v=d.data()||{};
-          const em=String(v.ownerEmail||'').toLowerCase();
-          /* Barang milik sendiri: dipulihkan kembali ke akun ini (email sama),
-             atau cocok UID (untuk barang lama yang belum punya ownerEmail). */
-          if((em && myMail && em===myMail) || (v.ownerUid && v.ownerUid===uid)){ mine.push(cloudToItem(d.id,v)); return; }
-          if(!v.ownerUid) return;
-          out.push(cloudToItem(d.id,v));
-        });
-        state.cloudItems=out;
-        const restored=cloudMergeMyItems(mine);
-        state.cloudAt=Date.now();
-        if(['home','barang','jasa','shop','akun'].indexOf(state.route)>=0 || restored){ try{ render(); applyI18n(); }catch(e){} }
-      }, function(err){
-        state.cloudError=(err&&err.message)||'gagal membaca pasar';
-      });
-  }catch(e){ state.cloudError=(e&&e.message)||'gagal menyiapkan pasar'; }
 }
 /* ===== LENCANA VERIFIKASI (centang biru bergerigi) dipakai di profil ===== */
 var __vsealSeq=0;
@@ -3940,22 +3824,6 @@ function cloudStartUsers(){
 }
 /* Gabungkan barang milik sendiri yang ditarik dari cloud ke daftar lokal.
    Hanya menambahkan yang belum ada — editan lokal tidak ditimpa. */
-function cloudMergeMyItems(list){
-  if(!list || !list.length) return false;
-  const byId={}; (state.items||[]).forEach(function(x){ if(x&&x.id) byId[x.id]=x; });
-  let added=0, changed=false;
-  const STAT=['views','viewCount','likes','likeCount','likesCount','commentCount','commentsCount','boosted','boostUntil','boostedAt','boostedBy'];
-  list.forEach(function(it){
-    if(!it||!it.id) return;
-    const cur=byId[it.id];
-    if(!cur){ state.items.push(it); byId[it.id]=it; added++; changed=true; return; }
-    /* Barang sudah ada di perangkat: hanya perbarui ANGKA (hasil aksi admin),
-       isi/editan lokal tidak ditimpa. */
-    STAT.forEach(function(k){ if(it[k]!==undefined && cur[k]!==it[k]){ cur[k]=it[k]; changed=true; } });
-  });
-  if(changed){ try{ persistItems(); }catch(e){} }
-  return added>0;
-}
 /* ===== Terapkan perubahan dari admin (poin, follower, peringatan) ===== */
 function applyAdminGrants(){
   const d=cloudDb(); const uid=cloudUid(); if(!d) return;
@@ -4221,18 +4089,6 @@ function myEmail(){ return String((state.user&&state.user.email)||'').toLowerCas
 function myName(){ return (state.user&&state.user.name)||'Pengguna'; }
 /* Kirim notifikasi ke akun lain (dipakai saat orang lain menyukai, mengomentari,
    mengikuti, atau mengajukan barter ke barang kita). */
-function notifyUser(email,title,body,kind){
-  const to=String(email||'').toLowerCase();
-  if(!to) return;
-  const now=Date.now();
-  const g=socialStore();
-  g.inbox[to]=g.inbox[to]||[];
-  g.inbox[to].unshift({t:title, b:body||'', kind:kind||'info', time:now, read:false});
-  if(g.inbox[to].length>60) g.inbox[to].length=60;
-  socialSave();
-  if(to===myEmail()) syncNotifDot();
-  try{ sbPushNotif(to,title,body,kind,now); }catch(e){}   /* SOSIAL: kirim ke cloud */
-}
 function myInbox(){ const g=socialStore(); const e=myEmail(); g.inbox[e]=g.inbox[e]||[]; return g.inbox[e]; }
 function migrateNotifLog(){
   try{
@@ -5162,10 +5018,6 @@ function shopChat(id){
   try{ openChat(c.id); }catch(e){}
   toast('Chat dengan '+name+' dibuka');
 }
-function barterView(){
-  const mine = myItems();
-  return '<div class="sp" style="padding:6px"><div class="card" style="background:linear-gradient(150deg,rgba(18,169,126,.16),rgba(18,169,126,.04))"><b style="font-size:15px">Ajukan Barter</b><p class="muted" style="margin:6px;line-height:1.5">Pilih barangmu sebagai penawaran, lalu ajukan ke barang milik pengguna lain di pasar.</p><button class="btn-primary" style="margin:14px" onclick="setRoute(\'barang\')">Jelajahi Barang di Pasar</button><button class="btn-ghost" style="margin-top:10px" onclick="openUpload()">+ Tawarkan Barang Baru</button></div>'+ secHead('Aset yang Bisa Kamu Tukar','') + (mine.length? '<div class="grid">'+mine.map(i=>itemCard(i)).join('')+'</div>' : '<div class="empty sm" style="padding:30px">Belum ada barang untuk dibarter</div>')+ '<div style="height:18px"></div></div>';
-}
 
 /* =================== AKUN =================== */
 const ICO={
@@ -5469,7 +5321,6 @@ function itemBarterStatus(id){
   if(bars.some(b=>b.status==='done')) return 'done';
   return 'available';
 }
-function reviewedBarter(id){ return (act().reviews||[]).some(r=>r.barterId===id); }
 function setReviewStar(n){
   state.reviewStar=n;
   const box=$('#revStars'); if(!box) return;
@@ -5479,36 +5330,7 @@ function setReviewStar(n){
     b.style.color = on?'#fff':'#6B6B74';
   });
 }
-function openReview(barterId){
-  const b=(state.barters||[]).find(x=>x.id===barterId); if(!b) return;
-  state.reviewTarget=barterId; state.reviewStar=5;
-  const aspects=['Kecepatan respon','Kondisi barang','Kejujuran'];
-  return sheet('Beri Review',
-    '<div class="muted" style="margin:12px">Bagaimana pengalaman barter dengan <b>'+esc(barterPeerName(b))+'</b>?</div>'+
-    '<div id="revStars" style="display:flex;gap:6px">'+[1,2,3,4,5].map(n=>'<button class="rev-star" data-n="'+n+'" onclick="setReviewStar('+n+')" style="flex:1;padding:8px;border-radius:10px;font-size:17px;background:#12A97E;color:#fff">★</button>').join('')+'</div>'+
-    '<label class="form-label" style="margin:14px 2px 6px">Aspek penilaian</label>'+
-    '<div style="display:flex;flex-wrap:wrap;gap:8px">'+aspects.map(function(a2,i){ return '<button class="pchip" id="revAsp'+i+'" onclick="toggleRevAspect('+i+',this)">'+a2+'</button>'; }).join('')+'</div>'+
-    '<label class="form-label" style="margin:14px 2px 6px">Ulasan (opsional)</label><textarea class="form-input" id="revText" rows="3" placeholder="Ceritakan pengalaman bartermu..."></textarea>'+
-    '<button class="btn-primary" style="margin-top:14px" onclick="submitReview()">Kirim Review (+'+REVIEW_MP+' MP)</button>');
-}
 function toggleRevAspect(i,el){ if(el) el.classList.toggle('on'); }
-function submitReview(){
-  const id=state.reviewTarget; const b=(state.barters||[]).find(x=>x.id===id); if(!b) return;
-  if(reviewedBarter(id)){ closeSheet(); toast('Kamu sudah memberi review untuk barter ini'); return; }
-  const aspects=['Kecepatan respon','Kondisi barang','Kejujuran'].filter(function(a2,i){ var el=document.getElementById('revAsp'+i); return el&&el.classList.contains('on'); });
-  const stars=Math.max(1,Math.min(5,state.reviewStar||5));
-  const text=(($('#revText')||{}).value||'').trim();
-  const a=act();
-  a.reviews.unshift({barterId:id, by:barterPeerName(b), rating:stars, text:text, aspects:aspects, time:Date.now()});
-  saveAct();
-  try{ sbPushReview(b, a.reviews[0]); }catch(e){}
-  try{ b.reviews=b.reviews||{}; b.reviews[myEmail()]={stars:stars,text:text,aspects:aspects,at:Date.now()}; LS.set('mutari_barters',state.barters); sbPatchBarter(b,{reviews:b.reviews}); }catch(e){}
-  awardPoints(REVIEW_MP,'Memberi review','⭐');
-  const aw=checkAwards();
-  closeSheet(); subRender();
-  try{ openBarterNegotiation(id); }catch(e){}
-  toast('Review terkirim! +'+REVIEW_MP+' MP'+(aw?' · 🏆 '+aw.name:''));
-}
 function isFollowing(name){ return (act().following||[]).some(u=>u.name===name); }
 function handleOf(name){ return '@'+String(name||'user').replace(/[^A-Za-z0-9]/g,'').toLowerCase(); }
 function emailOfUser(name,email){
@@ -5874,32 +5696,6 @@ function submitOffer(){
   if(bonus>Number(state.points||0)){ toast('Poin tidak cukup untuk bonus'); return; }
   offerBarter(__offer.targetId, __offer.myId, {bonus:bonus, msg:__offer.msg});
 }
-function acceptBarter(id){
-  const b=(state.barters||[]).find(function(x){ return x.id===id; });
-  if(!b || (b.status||'pending')!=='pending') return;
-  b.status='accepted'; b.acceptedAt=Date.now();
-  b.trail=Array.isArray(b.trail)?b.trail:[];
-  LS.set('mutari_barters',state.barters);
-  try{ sbUpdateBarter(b,'diterima'); }catch(e){}
-  const other=String(b.fromEmail||'').toLowerCase();
-  if(other && other!==myEmail()){ try{ notifyUser(other,'Penawaran barter diterima','Penawaranmu untuk "'+(b.title||'barang')+'" DITERIMA. Lanjutkan negosiasi di Chat.','barter'); }catch(e){} }
-  pushNotif('Penawaran diterima','Kamu menerima penawaran "'+(b.title||'barang')+'". Lanjutkan negosiasi.','barter');
-  try{ subRender(); }catch(e){} try{ if(state.route==='akun') render(); }catch(e){}
-  try{ openBarterNegotiation(id); }catch(e){}
-  toast('Penawaran diterima ✓ — lanjutkan negosiasi');
-}
-function rejectBarter(id){
-  const b=(state.barters||[]).find(function(x){ return x.id===id; });
-  if(!b || (b.status||'pending')!=='pending') return;
-  b.status='rejected'; b.rejectedAt=Date.now();
-  b.trail=Array.isArray(b.trail)?b.trail:[];
-  LS.set('mutari_barters',state.barters);
-  try{ sbUpdateBarter(b,'ditolak'); }catch(e){}
-  const other=String(b.fromEmail||'').toLowerCase();
-  if(other && other!==myEmail()){ try{ notifyUser(other,'Penawaran barter ditolak','Penawaranmu untuk "'+(b.title||'barang')+'" ditolak pemilik.','barter'); }catch(e){} }
-  try{ subRender(); }catch(e){} try{ if(state.route==='akun') render(); }catch(e){}
-  toast('Penawaran ditolak');
-}
 
 
 /* ===== TAHAP 2-5: NEGOSIASI, PENGIRIMAN, KONFIRMASI, REVIEW ===== */
@@ -5956,33 +5752,6 @@ function sbPatchBarter(b, extra){
   try{ sbWrite('barters', b.cloudId, patch); }catch(e){}
 }
 /* ---- deposit & asuransi ---- */
-function ensureBarterDeposit(b){
-  try{
-    /* v1.9.78: deposit hanya ditarik setelah penawaran DISETUJUI (accepted/shipping).
-       Sebelumnya sudah ditarik saat status masih 'pending', sehingga pengguna kehilangan
-       50 MP padahal lawan belum menyetujui. */
-    if(!b || !(b.status==='accepted' || b.status==='shipping')) return;
-    b.deposits=b.deposits||{};
-    const me=myEmail();
-    if(b.deposits[me]) return;
-    if(Number(state.points||0)<BARTER_DEPOSIT) return;
-    spendPoints(BARTER_DEPOSIT,'Deposit barter','🔒');
-    b.deposits[me]=BARTER_DEPOSIT;
-    LS.set('mutari_barters',state.barters);
-    sbPatchBarter(b,{deposits:b.deposits});
-  }catch(e){}
-}
-function refundBarterDeposit(b){
-  try{
-    b.deposits=b.deposits||{}; b.refunded=b.refunded||{};
-    const me=myEmail();
-    if(b.refunded[me]) return;
-    const amt=Number(b.deposits[me]||0)+((b.insurance&&b.insurance[me])?BARTER_INSURANCE:0);
-    if(amt>0) awardPoints(amt,'Deposit barter kembali','🔓');
-    b.refunded[me]=true;
-    LS.set('mutari_barters',state.barters);
-  }catch(e){}
-}
 function negoInsurance(id){
   const b=(state.barters||[]).find(function(x){ return x.id===id; }); if(!b) return;
   b.insurance=b.insurance||{};
@@ -6011,62 +5780,8 @@ function negoReport(id){
   });
 }
 /* ---- HALAMAN NEGOSIASI ---- */
-function closeNego(){ const ov=document.getElementById('negoOv'); if(ov) ov.classList.remove('open'); state.negoId=null; }
 /* v1.9.78: segarkan isi halaman negosiasi TANPA menutupnya dan tanpa menghapus ketikan pengguna.
    Dipakai saat pesan lawan / perubahan status masuk dari cloud, sehingga chat langsung muncul. */
-function negoRefresh(){
-  const id=state.negoId; if(!id) return;
-  const b=(state.barters||[]).find(function(x){ return x.id===id; }); if(!b) return;
-  const ov=document.getElementById('negoOv'); if(!ov||!ov.classList.contains('open')) return;
-  const inp=document.getElementById('negoIn'); const keep=inp?inp.value:'';
-  const box=document.getElementById('negoMsgs'); const sc=box?box.scrollTop:0;
-  ov.innerHTML=negoHtml(b);
-  const inp2=document.getElementById('negoIn'); if(inp2) inp2.value=keep;
-  const box2=document.getElementById('negoMsgs'); if(box2) box2.scrollTop=sc;
-  if(b.ship && b.ship.lat!=null){ try{ negMapInit(b); }catch(e){} }
-}
-function openBarterNegotiation(id){
-  const b=(state.barters||[]).find(function(x){ return x.id===id; }); if(!b) return;
-  state.negoId=id;
-  ensureBarterDeposit(b);
-  try{ closeSub(); }catch(e){}
-  let ov=document.getElementById('negoOv');
-  if(!ov){ ov=document.createElement('div'); ov.id='negoOv'; ov.className='overlay'; (document.getElementById('phone')||document.body).appendChild(ov); }
-  ov.innerHTML=negoHtml(b);
-  ov.classList.add('open');
-  const box=document.getElementById('negoMsgs'); if(box) box.scrollTop=box.scrollHeight;
-  if(b.ship && b.ship.lat!=null){ setTimeout(function(){ negMapInit(b); },140); }
-}
-function negoHtml(b){
-  const st=b.status||'pending';
-  const c=barterChatOf(b);
-  const ship=b.ship, conf=b.confirms||{}, me=myEmail(), peer=barterPeerEmail(b);
-  const iConf=!!conf[me], peerConf=!!(peer&&conf[peer]);
-  const msgs=(c&&c.msgs)||[];
-  const chatHtml=msgs.length?msgs.map(function(m){ return '<div class="nego-msg '+(m.me?'me':'you')+'">'+esc(m.t)+'</div>'; }).join(''):'<div class="muted" style="text-align:center;padding:18px">Belum ada pesan. Mulai negosiasi di sini.</div>';
-  let acts='';
-  if(st==='pending' && barterIsIncoming(b)) acts='<button class="primary" onclick="acceptBarter(\''+b.id+'\')">Setujui Penawaran</button><button class="danger" onclick="rejectBarter(\''+b.id+'\')">Tolak</button>';
-  else if(st==='pending') acts='<button class="danger" onclick="cancelBarter(\''+b.id+'\')">Batalkan Penawaran</button>';
-  else if(st==='accepted') acts='<button class="primary" onclick="openShipSheet(\''+b.id+'\')">Atur Pengiriman / COD</button><button onclick="negoInsurance(\''+b.id+'\')">Asuransi Premium</button><button onclick="negoReport(\''+b.id+'\')">Laporkan</button><button class="danger" onclick="cancelBarter(\''+b.id+'\')">Batalkan</button>';
-  else if(st==='shipping'){
-    let ap='';
-    if(ship && ship.by!==me && !ship.approved) ap='<button class="primary" onclick="negoApproveShip(\''+b.id+'\',true)">Setujui Titik Temu</button><button class="danger" onclick="negoApproveShip(\''+b.id+'\',false)">Tolak Usulan</button>';
-    acts=ap+'<button class="primary" onclick="negoConfirm(\''+b.id+'\')">Konfirmasi Barang Diterima</button><button onclick="negoInsurance(\''+b.id+'\')">Asuransi Premium</button><button class="danger" onclick="cancelBarter(\''+b.id+'\')">Batalkan</button>';
-  }
-  else if(st==='done') acts=(typeof reviewedBarter==='function'&&reviewedBarter(b.id))?'':'<button class="primary" onclick="openReview(\''+b.id+'\')">Beri Review</button>';
-  const shipHtml=ship?('<div class="card" style="margin:10px"><b style="font-size:13px">'+(ship.method==='cod'?'COD — Titik Temu':'Jasa Kirim')+'</b><div class="muted" style="margin-top:4px">'+esc(ship.place||'-')+(ship.note?(' · '+esc(ship.note)):'')+'</div>'+(ship.lat!=null?('<div style="height:190px;border-radius:11px;overflow:hidden;margin-top:9px;border:1px solid var(--line)" id="negoMap"></div><a href="https://www.google.com/maps?q='+ship.lat+','+ship.lng+'" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px;color:var(--green);font-weight:700;font-size:12.5px;text-decoration:none">Buka di Google Maps</a>'):'')+'<div style="margin-top:6px">'+(ship.approved?'<span style="color:#12A97E;font-weight:800;font-size:12px">Disetujui</span>':'<span style="color:#F59E0B;font-weight:800;font-size:12px">Menunggu persetujuan pihak lain</span>')+'</div></div>'):'';
-  const confHtml='<div class="card" style="margin:10px"><b style="font-size:13px">Konfirmasi Penerimaan</b><div class="muted" style="margin-top:5px">Kamu: '+(iConf?'<b style="color:#12A97E">sudah</b>':'belum')+' · Pihak lain: '+(peerConf?'<b style="color:#12A97E">sudah</b>':'belum')+'</div></div>';
-  return '<div class="nego-head"><button class="icon-btn" onclick="closeNego()">'+ico(ICO.back)+'</button><div style="flex:1;min-width:0"><b>Negosiasi Barter</b><div class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(b.title||'')+' ↔ '+esc(b.myTitle||'')+'</div></div>'+barterStatusPill(st)+'</div>'+
-    barterStepBar(b)+
-    '<div class="nego-body" id="negoMsgs">'+
-      '<div style="padding:0 12px">'+barterItemRow(barterMyTitle(b),'Barangmu',barterMyValue(b))+barterItemRow(barterTheirTitle(b),'Milik '+barterPeerName(b),barterTheirValue(b))+
-      (b.bonus?('<div class="muted" style="margin:0 2px 8px">Bonus poin dari pengaju: <b>+'+locNum(b.bonus)+' MP</b></div>'):'')+'</div>'+
-      '<div class="nego-act">'+acts+'</div>'+
-      shipHtml+confHtml+
-      '<div style="margin-top:6px">'+chatHtml+'</div>'+
-    '</div>'+
-    '<div class="nego-foot"><input class="form-input" id="negoIn" placeholder="Tulis pesan negosiasi..."><button class="btn-primary" style="width:auto;margin:0;padding:0 16px" onclick="negoSend(\''+b.id+'\')">Kirim</button></div>';
-}
 let __negMap=null;
 function negMapInit(b){
   const el=document.getElementById('negoMap'); if(!el) return;
@@ -6078,20 +5793,6 @@ function negMapInit(b){
     L.marker([b.ship.lat,b.ship.lng],{icon:dot('#8B5CF6')}).addTo(__negMap).bindPopup(esc(b.ship.poi||b.ship.place||'Titik temu'));
     setTimeout(function(){ try{ __negMap.invalidateSize(); }catch(e){} },250);
   });
-}
-function negoSend(id){
-  const el=document.getElementById('negoIn'); const v=(el&&el.value||'').trim(); if(!v) return;
-  const b=(state.barters||[]).find(function(x){ return x.id===id; }); if(!b) return;
-  const c=barterChatOf(b); if(!c) return;
-  c.msgs=Array.isArray(c.msgs)?c.msgs:[]; c.msgs.push({me:true,t:v,at:Date.now()}); c.last=v; c.time='Baru saja';
-  LS.set('mutari_chats',state.chats);
-  try{ sbEnsureChat(c); }catch(e){}
-  try{ sbPushChatMsg(c,v); }catch(e){}
-  const peer=barterPeerEmail(b);
-  try{ if(peer) sbPushChatMsg2(peer,v); }catch(e){}
-  if(peer && peer!==myEmail()){ try{ notifyUser(peer,'Pesan negosiasi barter',v,'chat'); }catch(e){} }
-  if(el) el.value='';
-  openBarterNegotiation(id);
 }
 /* ---- TAHAP 3: pengiriman/COD ---- */
 let __shipMethod='cod';
@@ -6142,15 +5843,6 @@ function negoApproveShip(id, ok){
   openBarterNegotiation(id); toast(ok?'Usulan pengiriman disetujui':'Usulan ditolak — atur ulang');
 }
 /* ---- TAHAP 4: konfirmasi + foto bukti ---- */
-function negoConfirm(id){
-  state.negoProof='';
-  sheet('Konfirmasi Barang Diterima',
-    '<div class="muted" style="margin:10px">Unggah foto bukti barang yang kamu terima (opsional), lalu konfirmasi. Barter selesai setelah KEDUA pihak konfirmasi.</div>'+
-    '<input type="file" id="negoProof" accept="image/*" onchange="negoProofPick(event)">'+
-    '<div id="negoProofPrev" class="muted" style="margin:10px"></div>'+
-    '<button class="btn-primary" style="margin-top:8px" onclick="negoConfirmSubmit(\''+id+'\')">Konfirmasi Selesai</button>'+
-    '<button class="btn-ghost" style="margin-top:8px;width:100%" onclick="closeSheet()">Batal</button>');
-}
 function negoProofPick(e){
   const f=(e.target.files||[])[0]; if(!f) return;
   compressImage(f, function(d){ state.negoProof=d; const el=document.getElementById('negoProofPrev'); if(el) el.innerHTML='<img src="'+d+'" style="max-width:100%;border-radius:10px">'; });
@@ -6169,25 +5861,6 @@ function negoConfirmSubmit(id){
   sbPatchBarter(b,{confirms:b.confirms});
   closeSheet();
   if(both){ finishBarter(b); } else { openBarterNegotiation(id); toast('Konfirmasi terkirim — menunggu pihak lain'); }
-}
-function finishBarter(b){
-  try{ refundBarterDeposit(b); }catch(e){}
-  try{ awardPoints(BARTER_MP,'Barter selesai','🤝'); }catch(e){}
-  try{ sbPatchBarter(b,{status:'done',doneAt:b.doneTime||Date.now()}); }catch(e){}
-  const peer=barterPeerEmail(b);
-  if(peer && peer!==myEmail()){ try{ notifyUser(peer,'Barter selesai 🎉','Barter "'+(b.title||'barang')+'" selesai. Deposit dikembalikan.','barter'); }catch(e){} }
-  pushNotif('Barter selesai 🎉','Barter "'+(b.title||'barang')+'" selesai.','barter');
-  try{ if($('#walletOv')&&$('#walletOv').classList.contains('open')) walletRender(); }catch(e){}
-  try{ subRender(); }catch(e){}
-  try{ showBarterCertificate(b); }catch(e){}
-}
-function showBarterCertificate(b){
-  const txt='SERTIFIKAT BARTER MUTARI\n========================\nID Barter : '+b.id+'\nBarang    : '+(b.title||'-')+'\nPenawaran : '+(b.myTitle||'-')+'\nPihak     : '+(b.owner||'-')+'\nTanggal   : '+new Date(b.doneTime||Date.now()).toLocaleString('id-ID')+'\nStatus    : SELESAI\n\nTerima kasih telah melakukan barter ramah lingkungan bersama MUTARI.';
-  const href='data:text/plain;charset=utf-8,'+encodeURIComponent(txt);
-  sheet('Barter Selesai 🎉',
-    '<div style="text-align:center;margin:12px"><div style="font-size:36px">🎉</div><b style="font-size:16px">Barter berhasil!</b><div class="muted" style="margin-top:6px">+'+BARTER_MP+' MP · deposit dikembalikan</div></div>'+
-    '<a class="btn-primary" style="display:block;text-align:center;text-decoration:none" href="'+href+'" download="sertifikat-barter-'+b.id+'.txt">Unduh Sertifikat Barter</a>'+
-    '<button class="btn-ghost" style="margin-top:10px;width:100%" onclick="closeSheet()">Tutup</button>');
 }
 
 
@@ -6440,12 +6113,6 @@ function completeBarter(id){
   subRender(); if($('#walletOv') && $('#walletOv').classList.contains('open')) walletRender();
   toast('Barter selesai! +'+BARTER_MP+' MP'+(aw?' · 🏆 '+aw.name:' 🎉'));
 }
-function cancelBarter(id){
-  const b=(state.barters||[]).find(x=>x.id===id); if(!b||b.status!=='pending') return;
-  b.status='cancelled'; LS.set('mutari_barters',state.barters);
-  try{ sbUpdateBarter(b,'dibatalkan'); }catch(e){}   /* FASE 2: status + riwayat ke cloud */
-  subRender(); toast('Barter dibatalkan');
-}
 function checkinStreak(){
   let n=0; const d=new Date();
   while(state.checkins.includes(d.toISOString().slice(0,10))){ n++; d.setDate(d.getDate()-1); }
@@ -6465,12 +6132,6 @@ function awardMetric(m){
   return 0;
 }
 function hasAward(id){ return act().awards.some(x=>x.id===id); }
-function checkAwards(){
-  const a=act(); let gained=null;
-  AWARDS.forEach(w=>{ if(!hasAward(w.id) && awardMetric(w.metric)>=w.goal){ a.awards.push({id:w.id,emo:w.emo,name:w.name,desc:w.desc,time:Date.now()}); gained=w; } });
-  if(gained) saveAct();
-  return gained;
-}
 function repStats(){
   const a=act(), revs=a.reviews||[];
   const rating = revs.length ? (revs.reduce((x,r)=>x+r.rating,0)/revs.length) : 0;
@@ -6687,37 +6348,6 @@ function setViolationRecord(rec){
   else a.violations.unshift(rec);
   saveAct();
   return rec;
-}
-function applyPenaltyGrant(g,v){
-  const pts=Math.abs(Number(g.amount)||0);
-  if(!pts) return false;
-  /* Idempoten: satu grant hanya diterapkan SEKALI di perangkat ini. */
-  let done={}; try{ done=LS.get('mutari_penalty_grants',{})||{}; }catch(e){ done={}; }
-  if(done[g.id]) return false;
-  spendPoints(pts,'Penalti: '+(v.label||g.label||'pelanggaran barter'),'⚠️');
-  /* Tandai catatan laporan yang sudah ada (biar tidak dobel hitung), atau buat baru bila tidak ada.
-     Utamakan catatan yang masih 'menunggu review' supaya dua laporan berbeda tetap terhitung dua. */
-  const lbl=String(v.vlabel||g.label||'Pelanggaran');
-  const a=act(); a.violations=a.violations||[];
-  let rec=null, fallback=null;
-  for(let i=0;i<a.violations.length;i++){
-    const x=a.violations[i];
-    if(x && (String(x.label||'')===lbl || (g.violationId && x.cloudId===g.violationId))){
-      if(x.status!=='disetujui'){ rec=x; break; }
-      if(!fallback) fallback=x;
-    }
-  }
-  if(!rec) rec=fallback;
-  try{ done[g.id]=Date.now(); LS.set('mutari_penalty_grants',done); }catch(e){}
-  if(rec){
-    rec.status='disetujui'; rec.points=-pts; rec.severity=rec.severity||v.severity||''; rec.appliedAt=rec.appliedAt||Date.now(); rec.note='Disetujui admin';
-    saveAct();
-  } else {
-    setViolationRecord({id:'gr_'+g.id, violationId:g.violationId||'', code:v.vtype||'', label:lbl, severity:v.severity||'', points:-pts, status:'disetujui', at:Date.now(), appliedAt:Date.now(), note:'Disetujui admin'});
-  }
-  try{ notifyUser(myEmail(),'⚠️ Poin minus diterapkan','-' +locNum(pts)+' MP · '+lbl+' (disetujui admin)','warning'); }catch(e){}
-  try{ syncSanction(); }catch(e){}
-  return true;
 }
 /* ====== FORM LAPORKAN PELANGGARAN (Bagian 4) ====== */
 let __rep={target:null, code:'', chronology:'', evidence:[]};
@@ -7540,22 +7170,6 @@ function delItemPrompt(id){
     '</div>',
     { centerTitle:true });
 }
-function delItem(id){
-  const it=(state.items||[]).find(x=>x.id===id);
-  if(!it){ toast('Barang tidak ditemukan'); return; }
-  state.items=(state.items||[]).filter(x=>x.id!==id);
-  persistItems();
-  try{ cloudDeleteItem(id); }catch(e){}   /* FASE 2: hapus juga dari pasar cloud */
-  /* bersihkan data yang menempel supaya tidak menyisakan data yatim */
-  state.wishlist=(state.wishlist||[]).filter(x=>x!==id); LS.set('mutari_wishlist',state.wishlist);
-  state.barters=(state.barters||[]).filter(b=>b.itemId!==id); LS.set('mutari_barters',state.barters);
-  try{ const g=socialStore(); if(g.stats) delete g.stats[id]; if(g.comments) delete g.comments[id]; socialSave(); }catch(e){}
-  if(state.comments){ delete state.comments[id]; LS.set('mutari_comments', state.comments); }
-  spendPoints(DEL_MP,'Hapus barang','🗑️');
-  closeSheet();
-  render(); subRender();
-  toast('Barang dihapus · -'+DEL_MP+' MP');
-}
 function openBarangku(){ openSub('barangku'); }
 /* Hapus SEMUA barang milik akun ini: lokal + cloud (mode uji ulang). */
 function wipeMyItemsApp(){
@@ -7707,113 +7321,6 @@ function vAuditLokasi(){
 }
 /* =================== HALAMAN BARANG (FULL SCREEN, ALA SOSMED) =================== */
 function commentsOf(id){ const g=socialStore(); g.comments[id]=g.comments[id]||[]; return g.comments[id]; }
-function openPost(id){
-  const it=findItem(id); if(!it) return;
-  socialAddView(id);   /* VIEW PUBLIK: bertambah tiap barang dibuka */
-  pushPage(); state.postId=id; state.postDescOpen=false; state.sub='post'; state.acc={};
-  $('#subOv').classList.add('open');
-  subRender();
-}
-function postToggleDesc(){ state.postDescOpen=!state.postDescOpen; subRender(); }
-function postLike(){ likeItem(state.postId); subRender(); }
-function postSave(){ toggleWishlist(state.postId); subRender(); }
-function postBarter(){ openOfferSheet(state.postId); }
-function postFocusComment(){
-  const el=$('#postCommentInput');
-  if(el){ el.focus(); try{ el.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){} }
-}
-function postShare(){
-  const it=findItem(state.postId); if(!it) return;
-  const text=it.title+' — lihat di MUTARI';
-  const url=(typeof location!=='undefined' && location.href)||'';
-  if(navigator.share){ try{ navigator.share({title:it.title, text:text, url:url}).catch(function(){}); return; }catch(e){} }
-  if(navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(text+' '+url).then(function(){ toast('Tautan disalin ✓'); }).catch(function(){ toast(text); });
-    return;
-  }
-  toast(text);
-}
-function addComment(){
-  const el=$('#postCommentInput');
-  const v=(el&&el.value||'').trim();
-  if(!v){ toast('Tulis komentar dulu'); return; }
-  const it=findItem(state.postId); if(!it) return;
-  commentsOf(it.id).push({name:(state.user&&state.user.name)||'Pengguna', email:(state.user&&state.user.email)||'', text:v, time:Date.now()});
-  socialSave();   /* komentar PUBLIK: terlihat oleh semua akun */
-  const cmtOwner=String(it.ownerId||'').toLowerCase();
-  if(cmtOwner && cmtOwner!==myEmail()) notifyUser(cmtOwner,'Komentar baru', myName()+': '+String(v).slice(0,60),'social');
-  notifyCommentReply(it, v, [cmtOwner]);
-  if(el) el.value='';
-  subRender();
-  toast('Komentar terkirim ✓');
-}
-function vPost(){
-  const it=findItem(state.postId);
-  if(!it) return '<div class="big-empty"><span class="ei">'+ico(ICO.box)+'</span><p>Barang tidak ditemukan</p></div>';
-  const mine=isMine(it);
-  const owner=it.owner||(mine?((state.user&&state.user.name)||'Pengguna'):'Pengguna');
-  const ownerAcc=(state.accounts||{})[String(it.ownerId||'').toLowerCase()]||{};
-  const liked=(act().liked||[]).indexOf(it.id)>=0;
-  const saved=(state.wishlist||[]).indexOf(it.id)>=0;
-  const following=!mine && isFollowing(owner);
-  const photos=(it.photos&&it.photos.length)?it.photos:(it.image?[it.image]:[]);
-  const cmts=commentsOf(it.id);
-  const desc=it.desc||'Tidak ada deskripsi.';
-  const longDesc=desc.length>140;
-  const shown=(longDesc && !state.postDescOpen)?(desc.slice(0,140)+'…'):desc;
-  const ownerPic=mine?((state.user&&state.user.avatar)||''):(ownerAcc.picture||'');
-
-  const ownerQ=String(owner||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-  const ownerOpen=(!mine && it.ownerId)?(' onclick="openUserProfile(\''+it.ownerId+'\',\''+ownerQ+'\')" style="cursor:pointer"'):'';
-  const head='<div class="post-head">'+
-    '<button class="page-back" onclick="subBack()">'+ico(ICO.back)+'</button>'+
-    '<img class="post-ava" src="'+avatarSrc({name:owner, avatar:ownerPic})+'">'+
-    '<div style="min-width:0;flex:1"'+ownerOpen+'><div class="post-name">'+esc(owner)+(mine?' · kamu':'')+'</div>'+
-      '<div class="post-sub">'+esc(it.category||'Barang')+(it.cond?' · '+esc(it.cond):'')+'</div></div>'+
-    (mine
-      ? '<span class="post-follow on">Milikmu</span>'
-      : '<button class="post-follow'+(following?' on':'')+'" onclick="tglFollow('+JSON.stringify(owner).replace(/"/g,'&quot;')+',null,'+JSON.stringify(it.ownerEmail||'')+')">'+(following?'Diikuti':'Ikuti')+'</button>')+
-  '</div>';
-
-  const imgs=photos.length
-    ? '<div class="post-imgs">'+photos.map(p=>'<img src="'+p+'" alt="">').join('')+'</div>'
-    : '<div style="height:200px;display:flex;align-items:center;justify-content:center;background:var(--surface2);color:var(--text3)">Tidak ada foto</div>';
-
-  const meta='<div style="padding:12px 16px 0">'+ '<div style="font-size:17px;font-weight:800;letter-spacing:-.2px">'+esc(it.title)+'</div>'+
-    '<div style="display:flex;gap:8px;margin:10px;flex-wrap:wrap">'+
-      '<span class="item-tag">'+esc(it.category||'-')+'</span>'+
-      '<span class="item-tag" style="background:var(--surface2);color:var(--text2)">'+esc(it.cond||'Bagus')+'</span>'+
-      (boostActive(it)?'<span class="item-tag" style="background:rgba(233,169,61,.15);color:var(--amber)">⚡ Boost</span>':'')+
-    '</div>'+
-    '<div class="muted" style="margin:10px">📍 '+esc(it.location||'Lokasi tidak diset')+'</div></div>';
-
-  const cap='<div class="post-cap">'+esc(shown)+
-    (longDesc?'<div class="post-more" onclick="postToggleDesc()">'+(state.postDescOpen?'Sembunyikan':'Lihat deskripsi')+'</div>':'')+
-    '</div>';
-
-  let extra='';
-  if((it.specs&&it.specs.length)||(it.aks&&it.aks.length)||it.want){
-    extra='<div style="padding:0 16px 6px">'+ (it.want?'<div class="insight" style="margin:4px"><div class="ic" style="background:rgba(18,169,126,.15);color:var(--green)">'+ico(ICO.swap)+'</div><div><b>Ingin ditukar dengan</b><p>'+esc(it.want)+'</p></div></div>':'')+
-      ((it.specs&&it.specs.length)?'<div class="upl-label" style="margin:12px 0 6px">Spesifikasi</div>'+it.specs.map(sp=>{ const s=String(sp); const i=s.indexOf(':'); const k=i>0?s.slice(0,i):s; const v=i>0?s.slice(i+1).trim():''; return '<div style="display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:6px 0"><span style="color:var(--text2)">'+esc(k)+'</span><b style="text-align:right">'+esc(v)+'</b></div>'; }).join(''):'')+
-      ((it.aks&&it.aks.length)?'<div class="upl-label" style="margin:12px 0 6px">Kelengkapan</div><div class="chips-wrap">'+it.aks.map(a=>'<span class="item-tag">'+esc(a)+'</span>').join('')+'</div>':'')+ '</div>';
-  }
-
-  const price=(it.priceMin||it.priceMax)?('<div style="padding:0 16px 4px;font-size:13px"><span class="muted">Estimasi nilai: </span><b style="color:var(--green)">'+(it.priceMin?locCur(it.priceMin):'')+(it.priceMax?(' – '+locCur(it.priceMax)):'')+'</b></div>'):'';
-
-  const acts='<div class="post-acts">'+
-    '<button class="post-act'+(liked?' on':'')+'" onclick="postLike()">'+ico(ICO.heart)+'<span>'+locNum(statNum(it,'likes'))+'</span></button>'+
-    '<button class="post-act" onclick="postFocusComment()">'+ico(ICO.chat)+'<span>'+locNum(cmts.length)+'</span></button>'+
-    '<button class="post-act" onclick="postShare()">'+ico(ICO.share)+'<span>Bagikan</span></button>'+
-    '<button class="post-act'+(saved?' on':'')+'" style="margin:auto" onclick="postSave()">'+ico(ICO.star)+'<span>'+(saved?'Tersimpan':'Simpan')+'</span></button>'+ '</div>';
-
-  const cmtsHtml='<div class="post-cmts"><div class="upl-label" style="margin:0 0 10px">Komentar ('+cmts.length+')</div>'+ (cmts.length ? cmts.map(c=>'<div class="post-cmt"><span class="c-ava">'+esc(String(c.name||'?').charAt(0).toUpperCase())+'</span><div><b>'+esc(c.name||'Pengguna')+'</b><p>'+esc(c.text)+'</p></div></div>').join('') : '<div class="muted" style="font-size:13px;margin:10px">Belum ada komentar. Jadilah yang pertama.</div>')+ '<div style="display:flex;gap:8px;margin:6px"><input class="form-input" id="postCommentInput" placeholder="Tulis komentar..." onkeydown="if(event.key===\'Enter\')addComment()"><button class="btn-primary" style="width:auto;margin:0;padding:0 16px" onclick="addComment()">Kirim</button></div></div>';
-
-  const cta = mine
-    ? '<div style="padding:0 16px 18px"><div class="insight" style="margin:0"><div class="ic" style="background:rgba(18,169,126,.15);color:var(--green)">'+ico(ICO.box)+'</div><div><b>Barang milikmu</b><p>Barang ini ada di koleksimu.</p></div></div><button class="btn-primary" style="margin:14px" onclick="openEditItem(\''+it.id+'\')">Ubah barang</button><button class="btn-ghost" style="margin-top:8px" onclick="subBack();openSub(\'barangku\')">Kelola di Barang Saya</button></div>'
-    : '<div style="padding:0 16px 18px"><button class="btn-primary" onclick="postBarter()">Ajukan Barter</button></div>';
-
-  return head+imgs+meta+cap+price+extra+acts+cmtsHtml+cta;
-}
 function vTerhubung(){
   const s=state.social||{};
   const linked=['ig','wa','x'].filter(k=>s[k]&&String(s[k]).trim()).length;
@@ -8419,50 +7926,6 @@ function vSmart(){
     return '<div class="card" style="margin:11px"><div class="card-row"><span class="ava40">'+ico(ICO.box)+'</span><span style="flex:1;min-width:0"><b>'+esc(a.title)+'</b><div class="muted" style="margin:4px">↔ '+esc(b.m.title)+'</div><div class="muted" style="margin-top:2px">milik '+esc(b.m.owner)+'</div><div style="margin-top:7px;color:var(--green);font-weight:700;font-size:13px">Skor pasangan '+b.s+'%</div></span></div><button class="btn-primary" style="margin:12px" onclick="quickOffer(\''+b.m.id+'\',\''+a.id+'\')">Ajukan Barter</button></div>';
   }).join('');
   return '<div class="sm-body" style="text-align:left;padding:22px 14px">'+head+rows+'</div>';
-}
-function offerBarter(targetId, myItemId, opts){
-  closeSheet();
-  opts=opts||{};
-  const target=findItem(targetId);
-  if(!target){ toast('Barang tidak ditemukan'); return; }
-  if(isMine(target)){ toast('Ini barangmu sendiri — pilih barang milik pengguna lain di pasar'); return; }
-  if((state.barters||[]).some(function(x){ return x.itemId===targetId && x.myItemId===(myItemId||'') && barterIsLocked(x.status); })){ toast('Penawaran untuk barang ini sudah ada'); return; }
-  const mine=myItemId?findItem(myItemId):null;
-  const n=target.owner||'Pengguna';
-  const ownerEmail=itemOwnerEmail(target);   /* v1.9.78: email pemilik dicari dengan andal */
-  const bonus=Math.max(0,Number(opts.bonus)||0);
-  if(bonus>Number(state.points||0)){ toast('Poin tidak cukup untuk bonus'); return; }
-  /* --- percakapan negosiasi --- */
-  state.chats=Array.isArray(state.chats)?state.chats:[];
-  let chat=state.chats.find(function(c){ return (ownerEmail && String(c.email||'').toLowerCase()===ownerEmail) || c.name===n; });
-  if(!chat){
-    chat={id:'c'+Date.now(),name:n,email:ownerEmail||String(target.ownerId||'').toLowerCase(),type:'Negosiasi',archived:false,official:false,last:'',time:'Baru saja',unread:0,msgs:[]};
-    state.chats.unshift(chat);
-  }
-  const line=(opts.msg&&String(opts.msg).trim())||('Halo, saya tertarik dengan '+target.title+'.');
-  chat.msgs=Array.isArray(chat.msgs)?chat.msgs:[];
-  chat.msgs.push({me:true,t:line,at:Date.now()});
-  chat.last=line; chat.time='Baru saja';
-  LS.set('mutari_chats',state.chats);
-  try{ sbEnsureChat(chat); }catch(e){}
-  try{ sbPushChatMsg(chat,line); }catch(e){}
-  try{ if(ownerEmail) sbPushChatMsg2(ownerEmail,line); }catch(e){}
-  /* --- dokumen penawaran barter --- */
-  const now=Date.now();
-  const b={id:'br'+now, itemId:targetId, title:target.title, owner:n, ownerId:target.ownerId||'', ownerEmail:ownerEmail,
-    myItemId:mine?mine.id:'', myTitle:mine?mine.title:'',
-    targetValue:offerVal(target), myValue:offerVal(mine), bonus:bonus, msg:line,
-    status:'pending', time:now, trail:[{t:'penawaran dikirim',at:now,by:myEmail()}]};
-  state.barters=Array.isArray(state.barters)?state.barters:[];
-  state.barters.unshift(b);
-  LS.set('mutari_barters',state.barters);
-  if(bonus>0){ spendPoints(bonus,'Bonus barter','🤝'); b.bonusSpent=true; }
-  try{ sbPushBarter(b); }catch(e){}
-  if($('#walletOv') && $('#walletOv').classList.contains('open')) walletRender();
-  pushNotif('Penawaran barter terkirim','Penawaran "'+target.title+'" terkirim · Menunggu Respon.','barter');
-  if(ownerEmail && ownerEmail!==myEmail()) notifyUser(ownerEmail,'Penawaran barter baru', myName()+' mengajukan barter untuk "'+target.title+'"'+(mine?' dengan "'+mine.title+'"':'')+(bonus?(' + '+bonus+' MP'):''),'barter');
-  toast('Penawaran terkirim · Menunggu Respon ✓');
-  try{ closeSheet(); openSub('riwayat'); }catch(e){}
 }
 /* =================== UPLOAD BARANG BARU =================== */
 const KATEGORI=['Elektronik','Fashion','Hobi & Koleksi','Rumah Tangga','Buku','Olahraga','Otomotif','Kesehatan','Mainan','Lainnya'];
@@ -9670,13 +9133,6 @@ function sbCanSyncItem(it){ return !!(it && (it.cloud || it.ownerUid || (typeof 
    Sekarang kegagalan dicatat, diberi tahu sekali, dan barang yang gagal dikirim
    dicoba lagi otomatis saat kembali online. */
 var __cloudFailShown=0;
-function cloudFailNotify(kind){
-  try{
-    if(__cloudFailShown && (Date.now()-__cloudFailShown)<90000) return;
-    __cloudFailShown=Date.now();
-    toast('⚠️ Sinkronisasi tertunda ('+(kind||'cloud')+') — data tersimpan di perangkat dan akan dikirim otomatis saat online.');
-  }catch(e){}
-}
 function cloudQueueGet(){ try{ return LS.get('mutari_cloudqueue',[])||[]; }catch(e){ return []; } }
 function cloudQueueSave(q){ try{ LS.set('mutari_cloudqueue', (q||[]).slice(-100)); }catch(e){} }
 function cloudQueueAdd(it){ try{ if(!it||!it.id) return; var q=cloudQueueGet(); if(!q.some(function(x){return x&&x.id===it.id;})){ q.push(it); cloudQueueSave(q); } }catch(e){} }
@@ -9724,24 +9180,6 @@ function sbListenComments(){
 }
 
 /* ---------- FASE 2: BARTER ---------- */
-function sbPushBarter(b){
-  if(!sbOnline()||!b) return null;
-  try{
-    var now=Date.now();
-    var ownerEmail=String(b.ownerEmail||'').toLowerCase();
-    var doc={title:String(b.title||''),owner:String(b.owner||''),ownerUid:String(b.ownerId||''),
-      ownerEmail:ownerEmail,ownerKey:userKeyOf(ownerEmail),
-      fromUid:sbUid(),fromName:myName(),fromEmail:myEmail(),
-      myTitle:String(b.myTitle||''),myItemId:String(b.myItemId||''),itemId:String(b.itemId||''),
-      targetValue:Number(b.targetValue||0),myValue:Number(b.myValue||0),bonus:Number(b.bonus||0),
-      status:String(b.status||'pending'),createdAt:Number(b.time||now),updatedAt:now,
-      trail:[{t:'diajukan',at:now,by:myEmail()}]};
-    b.trail=doc.trail;
-    var p=sbAdd('barters',doc);
-    if(p&&p.then) p.then(function(ref){ b.cloudId=ref.id; try{ LS.set('mutari_barters',state.barters); }catch(e){} }).catch(function(){});
-    return p;
-  }catch(e){ return null; }
-}
 function sbUpdateBarter(b, eventName){
   if(!sbOnline()||!b) return;
   if(!b.cloudId){ try{ sbPushBarter(b); }catch(e){} return; }
@@ -9750,45 +9188,6 @@ function sbUpdateBarter(b, eventName){
   trail.push({t:String(eventName||b.status||'update'), at:now, by:myEmail()});
   b.trail=trail;
   try{ sbWrite('barters', b.cloudId, {status:String(b.status||'pending'), updatedAt:now, trail:trail}); }catch(e){}
-}
-function sbListenBarters(){
-  const db=sbDb(); if(!db) return;
-  const apply=function(snap){
-    var changed=false;
-    snap.forEach(function(x){
-      var v=x.data()||{}, b=(state.barters||[]).find(function(y){ return y.cloudId===x.id; });
-      if(!b){
-        /* barter MASUK dari pengguna lain (sisi pemilik barang).
-           v1.9.78: cocokkan lewat ownerEmail ATAU ownerKey ATAU ownerId. */
-        var oe=String(v.ownerEmail||'').toLowerCase(), ok=String(v.ownerKey||''), oid=String(v.ownerId||'').toLowerCase();
-        var mine=(oe && oe===myEmail()) || (ok && ok===userKeyOf(myEmail())) || (oid && oid===myEmail());
-        if(mine){
-          b={id:'brc'+x.id, cloudId:x.id, itemId:String(v.itemId||''), title:String(v.title||''),
-             owner:String(v.owner||''), ownerId:String(v.ownerUid||''), ownerEmail:(oe||myEmail()),
-             ownerKey:(ok||userKeyOf(oe||myEmail())),
-             myItemId:String(v.myItemId||''), myTitle:String(v.myTitle||''),
-             targetValue:Number(v.targetValue||0), myValue:Number(v.myValue||0), bonus:Number(v.bonus||0),
-             status:String(v.status||'pending'),
-             time:Number(v.createdAt||Date.now()), incoming:true, fromName:String(v.fromName||''), fromEmail:String(v.fromEmail||''),
-             deposits:v.deposits||{}, insurance:v.insurance||{}, confirms:v.confirms||{}, ship:v.ship||null,
-             trail:(Array.isArray(v.trail)?v.trail:[])};
-          state.barters=Array.isArray(state.barters)?state.barters:[]; state.barters.unshift(b); changed=true;
-        }
-        return;
-      }
-      if(v.status && b.status!==v.status){ b.status=v.status; changed=true; }
-      if(Array.isArray(v.trail)) b.trail=v.trail;
-      if(v.ship) b.ship=v.ship;
-      if(v.confirms) b.confirms=v.confirms;
-    });
-    if(changed){ try{ LS.set('mutari_barters',state.barters); }catch(e){} try{ if(state.route==='akun') render(); }catch(e){} try{ negoRefresh(); }catch(e){} }
-  };
-  try{ if(state.sbBarterUnsub) state.sbBarterUnsub(); }catch(e){}
-  try{ if(state.sbBarterUnsub2) state.sbBarterUnsub2(); }catch(e){}
-  try{ if(state.sbBarterUnsub3) state.sbBarterUnsub3(); }catch(e){}
-  try{ state.sbBarterUnsub=db.collection('barters').where('fromUid','==',sbUid()).limit(200).onSnapshot(apply, function(){}); }catch(e){}
-  try{ state.sbBarterUnsub2=db.collection('barters').where('ownerEmail','==',myEmail()).limit(200).onSnapshot(apply, function(){}); }catch(e){}
-  try{ state.sbBarterUnsub3=db.collection('barters').where('ownerKey','==',userKeyOf(myEmail())).limit(200).onSnapshot(apply, function(){}); }catch(e){}
 }
 
 /* ---------- FASE 3: CHAT / SUPPORT ---------- */
@@ -10345,48 +9744,6 @@ function bxNotifyEnd(b){
   }catch(e){}
 }
 /* ---------- deposit & asuransi ---------- */
-function ensureBarterDeposit(b){
-  try{
-    if(!b || !(b.status==='accepted'||b.status==='shipping'||b.status==='done')) return;
-    b.deposits=b.deposits||{};
-    var me=myEmail();
-    if(b.deposits[me]) return;
-    if(Number(state.points||0)<BARTER_DEPOSIT){ return; }
-    spendPoints(BARTER_DEPOSIT,'Deposit jaminan barter','🛡️');
-    b.deposits[me]=BARTER_DEPOSIT;
-    barterPatch(b,{deposits:b.deposits});
-  }catch(e){}
-}
-function refundBarterDeposit(b){
-  try{
-    b.deposits=b.deposits||{}; b.refunded=b.refunded||{};
-    var me=myEmail();
-    if(b.refunded[me]) return;
-    var amt=Number(b.deposits[me]||0)+Number((b.insurance&&b.insurance[me])||0);
-    b.refunded[me]=true;
-    if(amt>0){ try{ awardPoints(amt,'Deposit barter kembali','🔓'); }catch(e){} }
-    barterPatch(b,{refunded:b.refunded});
-  }catch(e){}
-}
-function bxChargeInsurance(b){
-  try{
-    var amt=Number(b.insAmount||INS_TIERS[0]); b.insurance=b.insurance||{};
-    var me=myEmail(); if(b.insurance[me]) return;
-    if(Number(state.points||0)<amt) return;
-    spendPoints(amt,'Asuransi premium barter','🛡️');
-    b.insurance[me]=amt;
-    barterPatch(b,{insurance:b.insurance});
-  }catch(e){}
-}
-function bxRewardSelf(b){
-  try{
-    b.rewarded=b.rewarded||{};
-    var me=myEmail(); if(b.rewarded[me]) return;
-    b.rewarded[me]=true;
-    awardPoints(BARTER_REWARD,'Barter selesai','🤝');
-    barterPatch(b,{rewarded:b.rewarded});
-  }catch(e){}
-}
 
 /* ---------- HALAMAN NEGOSIASI (satu untuk kedua peran) ---------- */
 function closeNego(){ var ov=document.getElementById('negoOv'); if(ov) ov.classList.remove('open'); state.negoId=null; }
@@ -10446,13 +9803,6 @@ function bxCountdown(b){
   var left=barterLeftMs(b);
   return '<div class="bx-count">⏱️ Batas waktu respon: <span style="margin-left:auto">'+barterLeftLabel(left)+'</span></div>';
 }
-function bxDepositActive(b){
-  var mine=bxDepositAmt(b), peer=0;
-  try{ var pe=barterPeerEmail(b); peer=Number((b.deposits&&b.deposits[pe])||0); }catch(e){}
-  var ins=bxInsAmt(b);
-  var total=mine+peer+ins;
-  return '<div class="bx-dep"><span>🛡️ <b>Deposit Aktif</b> — '+locNum(mine)+'+'+locNum(peer)+' MP ditahan'+(ins?(' · asuransi '+locNum(ins)+' MP'):'')+'</span><b>'+locNum(total)+' MP</b></div>';
-}
 function bxMethodPicker(b){
   return '<div class="bx-pick"><b>Diterima! Pilih metode pertukaran:</b><div class="bx-pick-btns">'+
     '<button onclick="barterChooseMethod(\''+b.id+'\',\'cod\')"><span>📍</span> COD</button>'+
@@ -10476,50 +9826,6 @@ function bxMethodRow(b){
   }
   return '<div class="bx-mrow done"><span class="bx-mrow-ic ok">✓</span><div class="bx-mrow-t"><b>'+esc(label)+'</b><span>Disetujui kedua pihak</span></div>'+
     (b.ship && b.ship.lat!=null ? '<div class="bx-mrow-act"><button class="bx-mini" onclick="bxOpenMap(\''+b.id+'\')">Peta</button></div>' : '')+'</div>';
-}
-function bxConfirmRow(b){
-  var conf=b.confirms||{}, me=myEmail(), peer=barterPeerEmail(b);
-  var iC=!!conf[me], pC=!!(peer && conf[peer]);
-  var turn = iC ? (pC?'Selesai!':'Menunggu…') : 'Giliran kamu!';
-  return '<div class="bx-cfrow">'+
-    '<span class="bx-cf'+(iC?' on':'')+'">'+(iC?'✓ ':'')+'Kamu</span>'+
-    '<span class="bx-cfarr">'+ico(ICO.chev)+'</span>'+
-    '<span class="bx-cf'+(pC?' on':'')+'">'+(pC?'✓ ':'')+esc(barterPeerName(b))+'</span>'+
-    '<span class="bx-cfturn">'+turn+'</span></div>';
-}
-function bxDoneBlock(b){
-  var me=myEmail(), rev=(b.reviews&&b.reviews[me])||null;
-  var html='<div class="bx-inbox" style="border-color:rgba(18,169,126,.45);background:rgba(18,169,126,.09)"><b>✅ 🎉 Barter Selesai!</b><p>Kedua pihak telah mengonfirmasi.</p></div>';
-  if(!rev){
-    html+='<div class="bx-wait"><b>⏳ +'+REVIEW_RELEASE+' MP menunggu rilis!</b><p>Kirim review untuk melepaskan bonus +'+REVIEW_RELEASE+' MP + '+REVIEW_WRITE+' MP bonus review. Batas waktu: <b>'+bxRevDeadlineText(b)+'</b>.</p></div>';
-    html+='<div class="bx-actions" style="padding:10px 0 0"><button class="primary" onclick="openReview(\''+b.id+'\')">☆ Review &amp; Klaim +'+(REVIEW_RELEASE+REVIEW_WRITE)+' Poin</button></div>';
-  }else{
-    html+='<div class="bx-strip ok"><div class="bx-strip-t"><b>Ulasan sudah dikirim</b><span>'+'★'.repeat(Number(rev.stars||5))+' · bonus '+REVIEW_RELEASE+' MP dirilis + '+REVIEW_WRITE+' MP menulis review.</span></div></div>';
-  }
-  html+='<div class="bx-dbtn"><button class="green" onclick="openCertificatePage(\''+b.id+'\')">📜 Sertifikat</button><button onclick="openEnvPage()">🌱 Dampak Hijau</button></div>';
-  return html;
-}
-function bxActions(b){
-  var st=b.status||'pending', inc=barterIsIncoming(b);
-  var out='';
-  if(st==='pending'){
-    if(inc){ /* tombol Terima/Tolak sudah ada di kartu penawaran masuk */ }
-    else { out='<button class="danger" onclick="cancelBarter(\''+b.id+'\')">✕ Batalkan Barter</button>'; }
-    return out?'<div class="bx-actions">'+out+'</div>':'';
-  }
-  if(st==='accepted'){
-    if(b.method) out='<button class="danger" onclick="cancelBarter(\''+b.id+'\')">✕ Batalkan Barter</button>';
-    else out='<button class="danger" onclick="cancelBarter(\''+b.id+'\')">✕ Batalkan Barter</button>';
-    return '<div class="bx-actions">'+out+'</div>';
-  }
-  if(st==='shipping'){
-    var conf=b.confirms||{}, me=myEmail(), peer=barterPeerEmail(b);
-    if(!conf[me]) out+='<button class="primary" onclick="openBarterConfirm(\''+b.id+'\')">✓ Selesaikan Barter</button>';
-    else if(peer && !conf[peer]) out+='<button class="primary" disabled style="opacity:.6">Menunggu konfirmasi pihak lain…</button>';
-    out+='<button class="danger" onclick="cancelBarter(\''+b.id+'\')">✕ Batalkan Barter</button>';
-    return '<div class="bx-actions">'+out+'</div>';
-  }
-  return '';
 }
 function negoHtml(b){
   var st=b.status||'pending';
@@ -10573,46 +9879,6 @@ function negoSend(id){
   negoRefresh();
 }
 /* ---------- aksi status ---------- */
-function acceptBarter(id){
-  var b=findBarterById(id); if(!b) return;
-  b.status='accepted'; b.acceptedAt=Date.now();
-  bxTrail(b,'penawaran disetujui');
-  barterSys(b,'✅ Penawaran diterima! Silakan tentukan lokasi COD.');
-  barterSys(b,'🛡️ Jaminan '+BARTER_DEPOSIT+' poin ditahan dari kedua pihak sebagai asuransi barter.');
-  barterPatch(b,{status:'accepted',acceptedAt:b.acceptedAt});
-  try{ ensureBarterDeposit(b); }catch(e){}
-  var peer=barterPeerEmail(b);
-  if(peer && peer!==myEmail()){ try{ notifyUser(peer,'Penawaran barter disetujui ✅',myName()+' menyetujui penawaranmu. Tentukan metode pertukaran.','barter'); }catch(e){} }
-  try{ pushNotif('Penawaran disetujui ✅','Kamu menyetujui penawaran dari '+(b.fromName||'pengguna')+'.','barter'); }catch(e){}
-  openBarterNegotiation(b.id);
-  toast('Penawaran disetujui — pilih metode pertukaran');
-}
-function rejectBarter(id){
-  var b=findBarterById(id); if(!b) return;
-  b.status='rejected'; b.cancelledAt=Date.now(); b.cancelledBy=myEmail();
-  bxTrail(b,'penawaran ditolak');
-  barterPatch(b,{status:'rejected',cancelledAt:b.cancelledAt,cancelledBy:b.cancelledBy});
-  var peer=barterPeerEmail(b);
-  if(peer && peer!==myEmail()){ try{ notifyUser(peer,'Penawaran barter ditolak','Penawaran "'+(b.myTitle||b.title||'barang')+'" ditolak.','barter'); }catch(e){} }
-  try{ pushNotif('Penawaran ditolak','Kamu menolak penawaran dari '+(b.fromName||'pengguna')+'.','barter'); }catch(e){}
-  barterSys(b,'❌ Penawaran ditolak.');
-  openBarterNegotiation(b.id);
-  toast('Penawaran ditolak');
-}
-function cancelBarter(id){
-  var b=findBarterById(id); if(!b) return;
-  if(b.status==='done'||b.status==='rejected'||b.status==='cancelled'){ toast('Barter ini sudah selesai/dibatalkan'); return; }
-  if(!confirm('Batalkan barter ini?')) return;
-  b.status='cancelled'; b.cancelledAt=Date.now(); b.cancelledBy=myEmail();
-  bxTrail(b,'dibatalkan');
-  barterPatch(b,{status:'cancelled',cancelledAt:b.cancelledAt,cancelledBy:b.cancelledBy});
-  barterSys(b,'🚫 Barter dibatalkan oleh '+myName()+'.');
-  var peer=barterPeerEmail(b);
-  if(peer && peer!==myEmail()){ try{ notifyUser(peer,'Barter dibatalkan','Barter "'+(b.title||'barang')+'" dibatalkan.','barter'); }catch(e){} }
-  try{ pushNotif('Barter dibatalkan','Barter "'+(b.title||'barang')+'" telah dibatalkan.','barter'); }catch(e){}
-  closeNego(); try{ render(); }catch(e){}
-  toast('Barter dibatalkan');
-}
 /* ---------- metode pertukaran ---------- */
 function barterChooseMethod(id,m){
   if(m==='cod') return bxCodSheet(id);
@@ -10806,71 +10072,12 @@ function bxInsPropose(id){
 }
 /* ---------- KONFIRMASI SELESAI (foto bukti wajib) ---------- */
 function negoConfirm(id){ openBarterConfirm(id); }
-function openBarterConfirm(id){
-  var b=findBarterById(id); if(!b) return;
-  state.bxProof=state.bxProof||'';
-  var conf=b.confirms||{}, me=myEmail(), peer=barterPeerEmail(b);
-  var iC=!!conf[me], pC=!!(peer && conf[peer]);
-  var proof=state.bxProof;
-  var ready=!!(proof && String(proof).length>20);
-  sheet('Konfirmasi Barter Selesai',
-    '<div class="bx-cfbox"><b>Status Konfirmasi Kedua Pihak</b>'+
-      '<div class="bx-cfline"><span>Anda</span><b>'+(iC?'✓ sudah konfirmasi':'belum konfirmasi')+'</b></div>'+
-      '<div class="bx-cfline"><span>'+esc(barterPeerName(b))+'</span><b>'+(pC?'✓ sudah konfirmasi':'belum konfirmasi')+'</b></div>'+
-      '<div class="muted">→ Barter selesai ketika kedua pihak sudah konfirmasi.</div></div>'+
-    '<label class="form-label">Foto Bukti Serah Terima *</label>'+
-    '<div class="muted" style="margin:0 2px 8px">Upload foto bukti pengiriman (resi, paket) atau foto barang yang diterima. <b>Wajib</b> sebagai bukti sengketa.</div>'+
-    (proof?('<div class="bx-proof"><img src="'+proof+'" alt="bukti"><button class="bx-proof-x" onclick="bxProofClear(\''+id+'\')">×</button></div>'):'')+
-    '<label class="bx-upload">'+(proof?'Ganti Foto Bukti':'+ Tambah Foto Bukti')+
-      '<input type="file" accept="image/*" onchange="bxProofPick(event,\''+id+'\')" style="display:none"></label>'+
-    '<div class="bx-warn">⚠️ <b>Pastikan barter benar-benar selesai.</b> Dengan mengonfirmasi, Anda menyatakan bahwa pertukaran barang sudah terjadi dan sesuai deskripsi.</div>'+
-    '<label class="bx-check"><input type="checkbox" id="bxC1" '+(ready?'checked':'')+'> Barang sudah ditukar</label>'+
-    '<label class="bx-check"><input type="checkbox" id="bxC2" '+(ready?'checked':'')+'> Kondisi barang sesuai deskripsi</label>'+
-    '<label class="bx-check"><input type="checkbox" id="bxC3" disabled '+(ready?'checked':'')+'> Foto bukti serah terima sudah diupload</label>'+
-    '<div style="display:flex;gap:8px;margin-top:14px"><button class="btn-ghost" style="flex:1" onclick="closeSheet()">Batal</button>'+
-    '<button class="btn-primary" style="flex:1;margin:0" id="bxConfBtn" '+(ready?'':'disabled style="opacity:.55"')+' onclick="bxConfirmSubmit(\''+id+'\')">Konfirmasi Selesai</button></div>');
-}
 function bxProofPick(e,id){
   var f=(e.target.files||[])[0]; if(!f) return;
   compressImage(f,function(d){ state.bxProof=d; openBarterConfirm(id); });
 }
 function bxProofClear(id){ state.bxProof=''; openBarterConfirm(id); }
-function bxConfirmSubmit(id){
-  var b=findBarterById(id); if(!b) return;
-  if(!state.bxProof){ toast('Foto bukti wajib diupload dulu'); return; }
-  b.confirms=b.confirms||{}; b.confirmPhotos=b.confirmPhotos||{};
-  var me=myEmail();
-  if(b.confirms[me]){ closeSheet(); openBarterNegotiation(id); return; }
-  b.confirms[me]={at:Date.now()}; b.confirmPhotos[me]=state.bxProof;
-  bxTrail(b,'konfirmasi diterima');
-  var peer=barterPeerEmail(b);
-  var both=!!(peer && b.confirms[peer]);
-  if(both){ b.status='done'; b.doneTime=Date.now(); b.reviewDeadline=b.doneTime+7*24*3600*1000; bxTrail(b,'selesai'); }
-  barterPatch(b,{confirms:b.confirms,confirmPhotos:b.confirmPhotos,status:b.status,doneAt:b.doneTime,reviewDeadline:b.reviewDeadline});
-  barterSys(b,'✅ '+myName()+' telah mengonfirmasi barter selesai. '+(both?'🎉 Kedua pihak telah mengonfirmasi.':'Menunggu konfirmasi pihak lain...'));
-  if(peer && peer!==myEmail()){
-    try{ notifyUser(peer, both?'Barter selesai 🎉':'Konfirmasi barter menunggu', both?('Barter "'+(b.title||'barang')+'" selesai. Deposit dikembalikan.'):(myName()+' sudah konfirmasi. Giliran kamu.'),'barter'); }catch(e){}
-  }
-  closeSheet();
-  if(both){ finishBarter(b); } else { openBarterNegotiation(id); toast('Konfirmasi terkirim — menunggu pihak lain'); }
-}
-function finishBarter(b){
-  try{ bxRewardSelf(b); }catch(e){}
-  try{ refundBarterDeposit(b); }catch(e){}
-  try{ barterPatch(b,{status:'done',doneAt:b.doneTime||Date.now()}); }catch(e){}
-  var total=BARTER_REWARD+REVIEW_RELEASE+REVIEW_WRITE;
-  try{ barterSys(b,'🎉 Barter berhasil diselesaikan!\n💰 Masing-masing mendapat +'+BARTER_REWARD+' MP (langsung cair).\n⏳ +'+REVIEW_RELEASE+' MP lagi ditahan — berikan review untuk mencairkannya!\n📋 Total jika review diberikan: +'+total+' MP ('+BARTER_REWARD+' barter + '+REVIEW_RELEASE+' bonus review + '+REVIEW_WRITE+' menulis review).\n⚠️ Batas waktu review: '+bxRevDeadlineText(b)+' (7 hari). Setelah itu, '+REVIEW_RELEASE+' MP hangus.\n🛡️ Jaminan standar dikembalikan penuh.'); }catch(e){}
-  try{ bxNotifyEnd(b); }catch(e){}
-  try{ if($('#walletOv') && $('#walletOv').classList.contains('open')) walletRender(); }catch(e){}
-  try{ subRender(); }catch(e){}
-  try{ openBarterNegotiation(b.id); }catch(e){}
-}
 /* ---------- REVIEW / ULASAN ---------- */
-function reviewedBarter(id){
-  var b=findBarterById(id);
-  if(b && b.reviews && b.reviews[myEmail()]) return true;
-  return (act().reviews||[]).some(function(r){ return r.barterId===id; });
-}
 function openReview(barterId){
   var b=findBarterById(barterId); if(!b) return;
   if(reviewedBarter(barterId)){ toast('Kamu sudah memberi ulasan untuk barter ini'); return; }
@@ -10898,29 +10105,6 @@ function bxChip(i){
   var el=document.getElementById('bxCh'+i); if(el) el.classList.toggle('on', j<0);
 }
 function bxRevCount(el){ var c=document.getElementById('bxRevCount'); if(c) c.textContent=String((el&&el.value||'').length)+'/500'; }
-function submitReview(){
-  var id=state.reviewTarget, b=findBarterById(id); if(!b) return;
-  if(reviewedBarter(id)){ closeSheet(); toast('Kamu sudah memberi ulasan'); return; }
-  var stars=Math.max(1,Math.min(5,state.reviewStar||5));
-  var text=(($('#bxRevText')||{}).value||'').trim();
-  var chips=(state.revChips||[]).map(function(i){ return REV_CHIPS[i]?REV_CHIPS[i].t:''; }).filter(Boolean);
-  b.reviews=b.reviews||{};
-  b.reviews[myEmail()]={stars:stars,text:text,chips:chips,at:Date.now()};
-  b.reviewReleased=b.reviewReleased||{};
-  bxTrail(b,'memberi ulasan');
-  var firstRelease=!b.reviewReleased[myEmail()];
-  b.reviewReleased[myEmail()]=true;
-  barterPatch(b,{reviews:b.reviews,reviewReleased:b.reviewReleased});
-  try{ barterSys(b,'★'.repeat(stars)+' Review diberikan: "'+(text||'—')+'"\n✅ +'+REVIEW_RELEASE+' MP bonus dicairkan +'+REVIEW_WRITE+' MP menulis review = +'+(REVIEW_RELEASE+REVIEW_WRITE)+' MP total'); }catch(e){}
-  try{ awardPoints(REVIEW_WRITE,'Menulis ulasan','⭐'); }catch(e){}
-  if(firstRelease){ try{ awardPoints(REVIEW_RELEASE,'Bonus review barter','🎁'); }catch(e){} }
-  var a=act(); a.reviews.unshift({barterId:id,by:barterPeerName(b),rating:stars,text:text,time:Date.now()}); saveAct();
-  try{ sbPushReview(b,b.reviews[myEmail()]); }catch(e){}
-  var peer=barterPeerEmail(b);
-  if(peer && peer!==myEmail()){ try{ notifyUser(peer,'Ulasan baru ⭐',myName()+' memberi ulasan '+stars+' bintang untuk barter kalian.','social'); }catch(e){} }
-  closeSheet(); openBarterNegotiation(id);
-  toast('Review terkirim! +'+(REVIEW_RELEASE+REVIEW_WRITE)+' poin dirilis ('+REVIEW_RELEASE+' bonus barter + '+REVIEW_WRITE+' review)');
-}
 /* ---------- SERTIFIKAT ---------- */
 function showBarterCertificate(b){ if(b && b.id) openCertificatePage(b.id); }
 function openCertificatePage(id){
@@ -11050,120 +10234,11 @@ function bxInjectHomeCard(){
   }catch(e){}
 }
 /* ---------- PENJAGA SINKRON: hadiah, jaminan, notifikasi ---------- */
-function barterTick(){
-  try{
-    var me=myEmail();
-    (state.barters||[]).forEach(function(b){
-      if(!b) return;
-      if(b.status==='pending' && !b.notifiedStart){ b.notifiedStart=true; bxNotifyStart(b); barterPatch(b,{notifiedStart:true}); }
-      if(b.status==='accepted'||b.status==='shipping'||b.status==='done'){ ensureBarterDeposit(b); }
-      if(b.status==='rejected'||b.status==='cancelled'||b.status==='expired'){ refundBarterDeposit(b); }
-      if(b.status==='done'){
-        if(!(b.rewarded&&b.rewarded[me])) bxRewardSelf(b);
-        if(!(b.refunded&&b.refunded[me])) refundBarterDeposit(b);
-        if(!b.notifiedEnd){ b.notifiedEnd=true; bxNotifyEnd(b); barterPatch(b,{notifiedEnd:true}); }
-      }
-      if(b.methodApproved && b.method==='insurance' && !(b.insurance&&b.insurance[me])) bxChargeInsurance(b);
-    });
-  }catch(e){}
-}
 setInterval(function(){ try{ barterTick(); }catch(e){} try{ bxInjectHomeCard(); }catch(e){} }, 7000);
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ try{ barterTick(); }catch(e){} });
 
 
 /* ===== v1.10.0 — SINKRONISASI BARTER DIPERLUAS (kedua akun) ===== */
-function sbPushBarter(b){
-  if(!sbOnline()||!b) return null;
-  try{
-    var now=Date.now();
-    var ownerEmail=String(b.ownerEmail||'').toLowerCase();
-    var doc={
-      title:String(b.title||''), owner:String(b.owner||''), ownerUid:String(b.ownerId||''),
-      ownerEmail:ownerEmail, ownerKey:userKeyOf(ownerEmail),
-      fromUid:sbUid(), fromName:myName(), fromEmail:myEmail(),
-      myTitle:String(b.myTitle||''), myItemId:String(b.myItemId||''), itemId:String(b.itemId||''),
-      targetValue:Number(b.targetValue||0), myValue:Number(b.myValue||0), bonus:Number(b.bonus||0),
-      status:String(b.status||'pending'), createdAt:Number(b.time||now), updatedAt:now,
-      respondBy:Number(b.respondBy||0),
-      method:String(b.method||''), methodBy:String(b.methodBy||''), methodName:String(b.methodName||''),
-      methodApproved:!!b.methodApproved, methodApprovedBy:String(b.methodApprovedBy||''),
-      insAmount:Number(b.insAmount||0),
-      deposits:b.deposits||{}, insurance:b.insurance||{}, confirms:b.confirms||{}, confirmPhotos:b.confirmPhotos||{},
-      reviews:b.reviews||{}, rewarded:b.rewarded||{}, refunded:b.refunded||{}, reviewReleased:b.reviewReleased||{},
-      ship:b.ship||null,
-      trail:(Array.isArray(b.trail)&&b.trail.length)?b.trail:[{t:'diajukan',at:now,by:myEmail()}]
-    };
-    b.trail=doc.trail;
-    var p=sbAdd('barters',doc);
-    if(p&&p.then) p.then(function(ref){ b.cloudId=ref.id; try{ LS.set('mutari_barters',state.barters); }catch(e){} }).catch(function(){});
-    return p;
-  }catch(e){ return null; }
-}
-function sbListenBarters(){
-  const db=sbDb(); if(!db) return;
-  const apply=function(snap){
-    var changed=false, incomingNew=null;
-    snap.forEach(function(x){
-      var v=x.data()||{}, b=(state.barters||[]).find(function(y){ return y && (y.cloudId===x.id); });
-      if(!b){
-        var oe=String(v.ownerEmail||'').toLowerCase(), ok=String(v.ownerKey||''), oid=String(v.ownerId||'').toLowerCase();
-        var mine=(oe && oe===myEmail()) || (ok && ok===userKeyOf(myEmail())) || (oid && oid===myEmail());
-        if(mine){
-          b={id:'brc'+x.id, cloudId:x.id, itemId:String(v.itemId||''), title:String(v.title||''),
-             owner:String(v.owner||''), ownerId:String(v.ownerUid||''), ownerEmail:(oe||myEmail()),
-             ownerKey:(ok||userKeyOf(oe||myEmail())),
-             myItemId:String(v.myItemId||''), myTitle:String(v.myTitle||''),
-             targetValue:Number(v.targetValue||0), myValue:Number(v.myValue||0), bonus:Number(v.bonus||0),
-             status:String(v.status||'pending'),
-             time:Number(v.createdAt||Date.now()), incoming:true,
-             fromName:String(v.fromName||''), fromEmail:String(v.fromEmail||''),
-             respondBy:Number(v.respondBy||0),
-             deposits:v.deposits||{}, insurance:v.insurance||{}, confirms:v.confirms||{}, confirmPhotos:v.confirmPhotos||{},
-             reviews:v.reviews||{}, rewarded:v.rewarded||{}, refunded:v.refunded||{}, reviewReleased:v.reviewReleased||{},
-             method:String(v.method||''), methodBy:String(v.methodBy||''), methodName:String(v.methodName||''),
-             methodApproved:!!v.methodApproved, methodApprovedBy:String(v.methodApprovedBy||''), insAmount:Number(v.insAmount||0),
-             ship:v.ship||null, trail:(Array.isArray(v.trail)?v.trail:[])};
-          state.barters=Array.isArray(state.barters)?state.barters:[];
-          state.barters.unshift(b); changed=true; incomingNew=b;
-        }
-        return;
-      }
-      if(v.status && b.status!==v.status){ b.status=v.status; changed=true; }
-      if(v.respondBy) b.respondBy=Number(v.respondBy);
-      if(v.method!==undefined){ b.method=String(v.method||''); }
-      if(v.methodBy!==undefined) b.methodBy=String(v.methodBy||'');
-      if(v.methodName!==undefined) b.methodName=String(v.methodName||'');
-      if(v.methodApproved!==undefined) b.methodApproved=!!v.methodApproved;
-      if(v.methodApprovedBy!==undefined) b.methodApprovedBy=String(v.methodApprovedBy||'');
-      if(v.insAmount!==undefined) b.insAmount=Number(v.insAmount||0);
-      if(v.deposits) b.deposits=v.deposits;
-      if(v.insurance) b.insurance=v.insurance;
-      if(v.confirms) b.confirms=v.confirms;
-      if(v.confirmPhotos) b.confirmPhotos=v.confirmPhotos;
-      if(v.reviews) b.reviews=v.reviews;
-      if(v.rewarded) b.rewarded=v.rewarded;
-      if(v.refunded) b.refunded=v.refunded;
-      if(v.reviewReleased) b.reviewReleased=v.reviewReleased;
-      if(v.ship) b.ship=v.ship;
-      if(Array.isArray(v.trail)) b.trail=v.trail;
-      if(v.doneAt) b.doneTime=Number(v.doneAt);
-      changed=true;
-    });
-    if(changed){
-      try{ LS.set('mutari_barters',state.barters); }catch(e){}
-      try{ if(state.route==='akun'||state.route==='barter') render(); }catch(e){}
-      try{ negoRefresh(); }catch(e){}
-      try{ barterTick(); }catch(e){}
-      if(incomingNew){ try{ bxNotifyStart(incomingNew); }catch(e){} }
-    }
-  };
-  try{ if(state.sbBarterUnsub) state.sbBarterUnsub(); }catch(e){}
-  try{ if(state.sbBarterUnsub2) state.sbBarterUnsub2(); }catch(e){}
-  try{ if(state.sbBarterUnsub3) state.sbBarterUnsub3(); }catch(e){}
-  try{ state.sbBarterUnsub=db.collection('barters').where('fromUid','==',sbUid()).limit(200).onSnapshot(apply, function(){}); }catch(e){}
-  try{ state.sbBarterUnsub2=db.collection('barters').where('ownerEmail','==',myEmail()).limit(200).onSnapshot(apply, function(){}); }catch(e){}
-  try{ state.sbBarterUnsub3=db.collection('barters').where('ownerKey','==',userKeyOf(myEmail())).limit(200).onSnapshot(apply, function(){}); }catch(e){}
-}
 
 
 /* =====================================================================================
@@ -11471,25 +10546,6 @@ function offerBarter(targetId, myItemId, opts){
 }
 
 /* ---------- tick: hadiah, jaminan, notifikasi, outbox, pendengar ---------- */
-function barterTick(){
-  try{ bxEnsureListeners(); }catch(e){}
-  try{ bxFlushOutbox(); }catch(e){}
-  try{
-    var me=myEmail();
-    (state.barters||[]).forEach(function(b){
-      if(!b) return;
-      if(b.status==='pending' && !b.notifiedStart){ b.notifiedStart=true; bxNotifyStart(b); barterPatch(b,{notifiedStart:true}); }
-      if(b.status==='accepted'||b.status==='shipping'||b.status==='done'){ ensureBarterDeposit(b); }
-      if(b.status==='rejected'||b.status==='cancelled'||b.status==='expired'){ refundBarterDeposit(b); }
-      if(b.status==='done'){
-        if(!(b.rewarded&&b.rewarded[me])) bxRewardSelf(b);
-        if(!(b.refunded&&b.refunded[me])) refundBarterDeposit(b);
-        if(!b.notifiedEnd){ b.notifiedEnd=true; bxNotifyEnd(b); barterPatch(b,{notifiedEnd:true}); }
-      }
-      if(b.methodApproved && b.method==='insurance' && !(b.insurance&&b.insurance[me])) bxChargeInsurance(b);
-    });
-  }catch(e){}
-}
 
 
 /* =====================================================================================
@@ -11601,32 +10657,7 @@ function bxMGet(map,email){
 function bxMPut(map,email,val){ if(map) map[bxMKey(email)]=val; }
 
 /* ---------- jaminan (deposit) : ditahan SEKALI saat diterima ---------- */
-function ensureBarterDeposit(b){
-  try{
-    if(!b || !(b.status==='accepted'||b.status==='shipping'||b.status==='done')) return;
-    b.deposits=b.deposits||{};
-    var me=myEmail();
-    if(bxMGet(b.deposits,me)!==undefined) return;          /* sudah ditahan */
-    if(Number(state.points||0)<BARTER_DEPOSIT) return;     /* poin tidak cukup */
-    spendPoints(BARTER_DEPOSIT,'Jaminan barter ditahan','🔒');
-    bxMPut(b.deposits,me,BARTER_DEPOSIT);
-    barterPatch(b,{deposits:b.deposits});
-  }catch(e){}
-}
 /* ---------- pengembalian jaminan : PENUH, HANYA SEKALI ---------- */
-function refundBarterDeposit(b){
-  try{
-    b.deposits=b.deposits||{}; b.refunded=b.refunded||{};
-    var me=myEmail();
-    if(bxMGet(b.refunded,me)) return;                      /* sudah dikembalikan */
-    var dep=Number(bxMGet(b.deposits,me)||0);
-    var ins=Number(bxMGet(b.insurance,me)||0);
-    var amt=dep+ins;
-    bxMPut(b.refunded,me,true);
-    if(amt>0){ try{ awardPoints(amt,'Jaminan barter dikembalikan','🔓'); }catch(e){} }
-    barterPatch(b,{refunded:b.refunded,deposits:b.deposits});
-  }catch(e){}
-}
 /* ---------- asuransi premium (opsional) ---------- */
 function bxChargeInsurance(b){
   try{
@@ -11730,17 +10761,6 @@ function bxConfirmSubmit(id){
   if(both){ finishBarter(b); } else { openBarterNegotiation(id); toast('Konfirmasi terkirim — menunggu pihak lain'); }
 }
 /* ---------- selesai barter ---------- */
-function finishBarter(b){
-  try{ bxRewardSelf(b); }catch(e){}
-  try{ refundBarterDeposit(b); }catch(e){}
-  try{ barterPatch(b,{status:'done',doneAt:b.doneTime||Date.now()}); }catch(e){}
-  var total=BARTER_REWARD+REVIEW_RELEASE+REVIEW_WRITE;
-  try{ barterSys(b,'🎉 Barter berhasil diselesaikan!\n💰 Masing-masing mendapat +'+BARTER_REWARD+' MP (langsung cair).\n🔓 Jaminan '+BARTER_DEPOSIT+' MP dikembalikan penuh (bukan keuntungan).\n⏳ +'+REVIEW_RELEASE+' MP lagi menunggu rilis — berikan review untuk mencairkannya!\n📋 Total jika review diberikan: +'+total+' MP ('+BARTER_REWARD+' barter + '+REVIEW_RELEASE+' bonus review + '+REVIEW_WRITE+' menulis review).\n⚠️ Batas waktu review: '+bxRevDeadlineText(b)+' (7 hari). Setelah itu, '+REVIEW_RELEASE+' MP hangus.'); }catch(e){}
-  try{ bxNotifyEnd(b); }catch(e){}
-  try{ if($('#walletOv') && $('#walletOv').classList.contains('open')) walletRender(); }catch(e){}
-  try{ subRender(); }catch(e){}
-  try{ openBarterNegotiation(b.id); }catch(e){}
-}
 /* ---------- ulasan (kunci aman) ---------- */
 function reviewedBarter(id){
   var b=findBarterById(id);
@@ -11783,25 +10803,6 @@ function bxDoneBlock(b){
   return html;
 }
 /* ---------- penjaga sinkron (versi kunci aman) ---------- */
-function barterTick(){
-  try{ bxEnsureListeners(); }catch(e){}
-  try{ bxFlushOutbox(); }catch(e){}
-  try{
-    var me=myEmail();
-    (state.barters||[]).forEach(function(b){
-      if(!b) return;
-      if(b.status==='pending' && !b.notifiedStart){ b.notifiedStart=true; bxNotifyStart(b); barterPatch(b,{notifiedStart:true}); }
-      if(b.status==='accepted'||b.status==='shipping'||b.status==='done'){ ensureBarterDeposit(b); }
-      if(b.status==='rejected'||b.status==='cancelled'||b.status==='expired'){ refundBarterDeposit(b); }
-      if(b.status==='done'){
-        if(!bxMGet(b.rewarded||{},me)) bxRewardSelf(b);
-        if(!bxMGet(b.refunded||{},me)) refundBarterDeposit(b);
-        if(!b.notifiedEnd){ b.notifiedEnd=true; bxNotifyEnd(b); barterPatch(b,{notifiedEnd:true}); }
-      }
-      if(b.methodApproved && b.method==='insurance' && bxMGet(b.insurance||{},me)===undefined) bxChargeInsurance(b);
-    });
-  }catch(e){}
-}
 
 
 /* =====================================================================================
