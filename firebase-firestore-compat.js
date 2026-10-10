@@ -57,7 +57,12 @@
       email: u.email || '',
       isAnonymous: (u.is_anonymous === true) || (!u.email && !u.phone),
       displayName: m.full_name || m.name || '',
-      photoURL: m.avatar_url || m.picture || ''
+      photoURL: m.avatar_url || m.picture || '',
+      /* v1.12.3: penyedia login ('google', 'email', 'anonymous').
+         Dipakai aplikasi untuk tahu bahwa sesi ini berasal dari login Google,
+         sehingga login bisa diselesaikan walau sesinya baru siap belakangan. */
+      provider: (u.app_metadata && u.app_metadata.provider) ||
+        (u.identities && u.identities[0] && u.identities[0].provider) || ''
     };
   }
 
@@ -171,6 +176,25 @@
           }).then(function (res) {
             if (res.error) throw errOf(res.error);
             currentUser = mapUser(res.data.user); notifyAuth();
+            return { user: currentUser };
+          });
+        });
+      },
+
+      /* v1.12.2: menetapkan password pada akun yang SUDAH ADA (mis. akun Google).
+         Dipakai agar pengguna Google juga punya password MUTARI yang berlaku
+         di semua perangkat, bukan hanya di HP tempat ia mendaftar. */
+      updateUser: function (data) {
+        return sb().then(function (c) {
+          if (!c || !c.auth || typeof c.auth.updateUser !== 'function') {
+            throw errOf({ code: 'unsupported', message: 'updateUser tidak tersedia' });
+          }
+          var payload = {};
+          if (data && data.password != null) payload.password = String(data.password);
+          return c.auth.updateUser(payload).then(function (res) {
+            if (res && res.error) throw errOf(res.error);
+            var u = res && res.data && res.data.user;
+            if (u) { currentUser = mapUser(u); notifyAuth(); }
             return { user: currentUser };
           });
         });

@@ -2,8 +2,8 @@
 <!--
   MUTARI — Barter & Marketplace
   ==============================
-  Versi   : 1.11.0
-  Build   : 115
+  Versi   : 1.12.0
+  Build   : 118
   Berkas  : index.html (GitHub) · mutari-app-v1.9.78.html (uji langsung)
   Logo    : TERTANAM inline (base64) di dalam berkas ini — JANGAN dihapus.
   Tema    : hanya GELAP (fitur mode terang sudah dihapus).
@@ -60,7 +60,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="MUTARI">
 <meta name="description" content="MUTARI — Barter &amp; Marketplace. Ajak tukar barang, COD aman dengan titik temu, poin MP, komunitas barter, dan perlindungan transaksi.">
-<title>MUTARI — Barter &amp; Marketplace · v1.11.0</title>
+<title>MUTARI — Barter &amp; Marketplace · v1.12.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -2050,13 +2050,14 @@ const state = {
   timer: null
 };
 
-const APP_VERSION = '1.11.2';
-const APP_BUILD = 117;
+const APP_VERSION = '1.12.0';
+const APP_BUILD = 118;
 const ACCOUNT_HISTORY_MAX=1;   /* v1.9.70: halaman login hanya menampilkan akun terakhir dipakai */
 /* OAuth Client ID (Web) untuk login Google sungguhan. Kosongkan untuk memakai form email.
    Bisa juga diatur dari Pengaturan -> Google Client ID (tersimpan lokal). */
 const GOOGLE_CLIENT_ID = '';
 const CHANGELOG = [
+  ['1.12.0','AKUN GOOGLE + PETA TITIK TEMU DIPERBAIKI. (1) LOGIN GOOGLE tidak lagi tertahan di layar pendaftaran — sebelumnya login hanya dicoba SEKALI setelah kembali dari Google, sehingga bila sesi Supabase belum siap aplikasi tetap menampilkan layar masuk walaupun sebenarnya sudah masuk; kini login diselesaikan begitu sesi Google benar-benar siap, dengan pengaman agar tidak diproses dua kali dan tidak mengambil alih akun email/admin. (2) PENGGUNA GOOGLE WAJIB MEMBUAT PASSWORD MUTARI — akun Google yang belum punya password diminta membuatnya lewat DUA KOLOM (password + konfirmasi), lalu password disimpan ke AKUN (Supabase Auth) sehingga berlaku di SEMUA perangkat; daftar manual tidak diubah. (3) PETA TITIK TEMU COD dihidupkan kembali dengan menyambungkan mesin peta lama ke tombol yang sudah ada: Auto 1-Klik kini benar-benar mencari lokasi aman & ramai lalu menampilkan peta, dan Pilih Manual di Peta kini benar-benar membuka peta yang bisa diketuk serta MENYIMPAN koordinat — sebelumnya koordinat tidak tersimpan sehingga peta tidak pernah muncul dan tautan Google Maps mati. Tombol, nama, dan alur (usul lalu disetujui pihak lain) tidak berubah. (4) FOTO PROFIL pengguna lain kini tampil di beranda dan halaman postingan — foto diunggah ke penyimpanan cloud dan alamatnya dibagikan lewat dokumen pengguna, bukan hanya tersimpan di HP pemiliknya. Tidak ada perubahan lain pada cara kerja sistem MUTARI.'],
   ['1.11.2','SINKRONISASI POIN ⇄ REPUTASI DISELARASKAN. (1) Semua perubahan poin (naik maupun turun) kini lewat satu jalur wajib syncReputation(): dompet, tingkat reputasi, lencana/border, dan sanksi dihitung ulang lalu poin + tier + lencana ditulis ulang ke cloud. (2) Penyesuaian poin dari admin (adminGrants) kini ikut memicu perhitungan ulang tingkat reputasi - sebelumnya lencana/border bisa tertinggal. (3) Poin dari cloud digabung dengan aman memakai cap waktu (pointsAt): perubahan lokal yang belum terkirim tidak lagi tertimpa nilai cloud lama, dan bila perangkat lokal lebih baru nilainya didorong ke cloud. (4) Lencana tingkat naik/turun otomatis mengikuti poin di dompet, profil, border avatar, maupun portal admin. Tidak ada fitur baru; hanya penyelarasan sinkronisasi.'],
   ['1.11.1','MULAI BERSIH TOTAL. Data lama dihapus sekali lagi di setiap perangkat (semua kunci penyimpanan lokal MUTARI: data global, data per akun, daftar akun, dan sesi admin) sehingga aplikasi kembali benar-benar dari nol. Tidak ada fitur atau sistem yang diubah, ditambah, atau dihilangkan.'],
   ['1.11.0','AKUN SUNGGUHAN (UID = AKUN) + DATA TERPISAH PER AKUN. (1) Login email + sandi kini memakai FIREBASE AUTHENTICATION sungguhan (createUserWithEmailAndPassword / signInWithEmailAndPassword), jadi UID Firebase = akun dan stabil di HP mana pun; Google login juga memakai Firebase Auth. (2) Semua data akun disimpan TERPISAH per akun (kunci penyimpanan menyertakan kunci akun), sehingga pindah akun memuat data akun itu sendiri - tidak ada lagi kunci global bersama yang membuat akun baru tampak sama dengan akun lama. (3) MULAI BERSIH: data lama dihapus sekali saat pembaruan ini (daftar akun yang tersimpan tetap agar email tidak perlu diketik ulang). (4) Keluar (logout) tidak lagi menghapus data akun - data tetap tersimpan dan dimuat kembali saat masuk. PENTING: aktifkan Email/Password di Firebase Console -> Authentication -> Sign-in method.'],
@@ -2688,6 +2689,7 @@ function pickAccount(email){
   const accounts=state.accounts||{}; const acc=accounts[email]; if(!acc) return;
   $('#authEmail').value=email;
   state.authMode='signin';
+  state.pwGoogle=false;   /* v1.12.2: alur manual, bukan alur Google */
   state.pending={ name:acc.name||email.split('@')[0], email:email };
   if(!acc.pass){ loginAs(email, acc.name); return; }
   gotoPassword();
@@ -2705,6 +2707,7 @@ function authContinue(){
     state.pending={ name:(accounts[email]&&accounts[email].name)||email.split('@')[0], email:email };
   }
   $('#authErr').classList.remove('show');
+  state.pwGoogle=false;   /* v1.12.2: alur manual, bukan alur Google */
   gotoPassword();
 }
 function loginAs(email, name, opts){
@@ -2791,6 +2794,28 @@ function onGoogleCredential(resp){
   if(expected && p.aud && p.aud!==expected){ googleNote('Client ID tidak cocok dengan kredensial Google.'); return; }
   loginAsGoogle({email:p.email, name:p.name||p.given_name, picture:p.picture, sub:p.sub});
 }
+/* v1.12.2: apakah akun ini BELUM punya password MUTARI?
+   Dicek bertingkat agar berlaku LINTAS PERANGKAT:
+     (1) penanda di perangkat ini, (2) penanda dari daftar pengguna cloud,
+     (3) baca langsung dokumen pengguna di cloud.
+   Bila pemeriksaan cloud gagal (offline), jawabannya "tidak perlu" supaya
+   password yang sudah ada tidak pernah tertimpa tanpa sengaja. */
+function bxNeedsMutariPass(email, cb){
+  var em=String(email||'').toLowerCase();
+  if(!em){ cb(false); return; }
+  var acc=(state.accounts||{})[em];
+  if(acc && (acc.hasMutariPass || acc.pass)){ cb(false); return; }
+  var be=(state.userByEmail||{})[em];
+  if(be && be.mutariPass){ cb(false); return; }
+  var db=null; try{ db=cloudDb(); }catch(e){}
+  if(!db){ cb(false); return; }
+  try{
+    db.collection('users').doc(userKeyOf(em)).get().then(function(snap){
+      var v=(snap && snap.exists && snap.data && snap.data())||{};
+      cb(!v.mutariPass);
+    }).catch(function(){ cb(false); });
+  }catch(e){ cb(false); }
+}
 function loginAsGoogle(profile){
   const email=String(profile.email||'').toLowerCase();
   if(!email){ googleNote('Google tidak mengembalikan email.'); return; }
@@ -2798,11 +2823,22 @@ function loginAsGoogle(profile){
   const accounts=state.accounts||{};
   const prev=accounts[email]||{};
   const gName=cleanName(profile.name||prev.name||'');
-  accounts[email]={ name:isValidName(gName)?gName:'', pass:prev.pass||null, google:true, sub:profile.sub||prev.sub||'', picture:profile.picture||prev.picture||'', verifiedAt:Date.now(), time:Date.now() };
+  accounts[email]={ name:isValidName(gName)?gName:'', pass:prev.pass||null, hasMutariPass:!!(prev.hasMutariPass||prev.pass), google:true, sub:profile.sub||prev.sub||'', picture:profile.picture||prev.picture||'', verifiedAt:Date.now(), time:Date.now() };
   state.accounts=accounts; LS.set('mutari_accounts',accounts);
   googleNote('');
-  loginAs(email, accounts[email].name, {picture:accounts[email].picture, google:true});
-  toast('Masuk dengan Google ✓');
+  /* v1.12.2: pengguna Google yang BELUM punya password MUTARI diminta membuatnya
+     lebih dulu (dua kolom: password + konfirmasi), lalu password disimpan ke akun.
+     Pengguna Google yang sudah punya langsung masuk seperti biasa. */
+  bxNeedsMutariPass(email, function(need){
+    if(need){
+      state.pending={ name:accounts[email].name||email.split('@')[0], email:email };
+      state.pwGoogle=true;
+      try{ gotoPassword(); }catch(e){}
+      return;
+    }
+    loginAs(email, accounts[email].name, {picture:accounts[email].picture, google:true});
+    toast('Masuk dengan Google ✓');
+  });
 }
 function authGoogle(){
   googleNote('');
@@ -2856,21 +2892,22 @@ function gotoPassword(){
   const accounts=state.accounts||{};
   const acc=accounts[(p.email||'').toLowerCase()];
   const creating=!acc;                                   /* password baru untuk akun baru di perangkat ini */
-  const signup = (state.authMode==='signup') && creating; /* kolom Konfirmasi Password HANYA untuk Sign up */
-  state.pwCreate=creating;
+  const gnew = state.pwGoogle===true;                    /* v1.12.2: pengguna Google membuat password MUTARI */
+  const signup = gnew || ((state.authMode==='signup') && creating); /* kolom Konfirmasi Password untuk Sign up & pengguna Google baru */
+  state.pwCreate = gnew ? true : creating;               /* Google: syarat password + kolom konfirmasi berlaku */
   state.pwSignup=signup;
   $('#pwName').textContent = p.name || p.email;
   $('#pwMail').textContent = p.email;
   const av=$('#pwAva'); if(av) av.src=avatarSrc({name:p.name, avatar:(acc&&acc.picture)||''});
-  $('#pwTitle').textContent = signup ? 'Buat Akun MUTARI' : 'Masuk ke MUTARI';
-  $('#pwSub').textContent = signup ? 'Akun baru untuk '+p.email : 'Masukkan password akunmu untuk melanjutkan';
+  $('#pwTitle').textContent = gnew ? 'Buat Password MUTARI' : (signup ? 'Buat Akun MUTARI' : 'Masuk ke MUTARI');
+  $('#pwSub').textContent = gnew ? ('Akun Google '+p.email+' belum punya password MUTARI') : (signup ? 'Akun baru untuk '+p.email : 'Masukkan password akunmu untuk melanjutkan');
   /* v1.9.76: halaman MASUK hanya menampilkan SATU kolom password. Kolom "Konfirmasi Password"
      hanya muncul saat mendaftar (Sign up) agar tampilan masuk tidak lagi menyerupai buat akun. */
   $('#pwConfirmWrap').style.display = signup ? '' : 'none';
-  $('#pwChecks').style.display = creating ? '' : 'none';
-  $('#btnMake').textContent = signup ? 'Buat Akun & Masuk' : 'Masuk';
-  $('#pwNote').textContent = signup ? 'Semua barang, poin, dan riwayatmu akan disimpan khusus untuk email ini.' : 'Barang, poin, dan riwayat akun ini akan dimuat kembali otomatis.';
-  $('#pw1').placeholder = creating ? 'Minimal 6 karakter, harus ada angka' : 'Password kamu';
+  $('#pwChecks').style.display = state.pwCreate ? '' : 'none';
+  $('#btnMake').textContent = gnew ? 'Simpan Password & Masuk' : (signup ? 'Buat Akun & Masuk' : 'Masuk');
+  $('#pwNote').textContent = gnew ? 'Password ini khusus MUTARI dan berbeda dari password Google kamu. Berlaku di semua perangkat untuk masuk & bertransaksi.' : (signup ? 'Semua barang, poin, dan riwayatmu akan disimpan khusus untuk email ini.' : 'Barang, poin, dan riwayat akun ini akan dimuat kembali otomatis.');
+  $('#pw1').placeholder = state.pwCreate ? 'Minimal 6 karakter, harus ada angka' : 'Password kamu';
   $('#pw1').value=''; $('#pw2').value='';
   pwValidate();
   showScreen('password');
@@ -3296,6 +3333,20 @@ function fbConnect(){
       auth.onAuthStateChanged(function(u){
         state.fb=Object.assign({},fbState(),{loading:false,ready:!!u,uid:u?u.uid:'',anonymous:!!(u&&u.isAnonymous),error:''});
         fbRefreshUI();
+        /* v1.12.3: SELESAIKAN LOGIN GOOGLE YANG TELAT SIAP.
+           Sebelumnya login Google hanya dicoba SEKALI di fbHandleRedirect(). Kalau saat itu
+           sesi Supabase belum siap, login tidak pernah dilanjutkan sehingga halaman tetap di
+           layar pendaftaran walaupun sesi Google sudah ada. Sekarang: begitu sesi Google
+           benar-benar siap, login langsung diselesaikan di sini. */
+        try{
+          if(u && !u.isAnonymous && u.email && u.provider==='google' && !__oauthDone && bxOAuthPending() && !isAdminEmail(u.email)){
+            if(!state.user || String((state.user&&state.user.email)||'').toLowerCase()!==String(u.email).toLowerCase()){
+              __oauthDone=true; bxOAuthClear();
+              googleNote('');
+              loginAsGoogle({ email:u.email, name:u.displayName, picture:u.photoURL, sub:u.uid });
+            }
+          }
+        }catch(e){}
       });
       if(auth.currentUser) return auth.currentUser;
       return auth.signInAnonymously().then(function(cred){ return cred&&cred.user; });
@@ -3460,6 +3511,7 @@ function fbSignInGoogle(){
     return;
   }
   setGoogleBtnBusy(true);
+  __oauthDone=false; bxOAuthMark();   /* v1.12.3: tandai sedang menuju Google */
   googleNote('Menyambungkan ke Firebase…');
   fbConnect().then(function(){
     const a=fbState().auth;
@@ -3505,12 +3557,30 @@ function fbGoogleUser(){
     });
   }).then(function(res){ return (res&&res.user)||null; });
 }
+/* v1.12.3: PENANDA "SEDANG KEMBALI DARI LOGIN GOOGLE".
+   Disimpan di sessionStorage supaya tetap ada setelah halaman dialihkan ke Google
+   dan kembali lagi. Dipakai untuk menyelesaikan login walau sesi Google baru siap
+   SETELAH pemeriksaan awal — penyebab halaman tertahan di layar pendaftaran. */
+function bxOAuthMark(){ try{ sessionStorage.setItem('mutari_oauth_pending', String(Date.now())); }catch(e){} }
+function bxOAuthPending(){
+  try{
+    var v=Number(sessionStorage.getItem('mutari_oauth_pending')||0);
+    if(!v) return false;
+    if(Date.now()-v > 5*60*1000){ sessionStorage.removeItem('mutari_oauth_pending'); return false; }
+    return true;
+  }catch(e){ return false; }
+}
+function bxOAuthClear(){ try{ sessionStorage.removeItem('mutari_oauth_pending'); }catch(e){} }
+/* Pengaman: login Google hanya diproses SEKALI, walau sinyalnya datang berkali-kali. */
+var __oauthDone=false;
 /* Menyelesaikan hasil signInWithRedirect setelah halaman kembali dari Google. */
 function fbHandleRedirect(a){
   if(!a || typeof a.getRedirectResult!=='function') return Promise.resolve(false);
+  if(__oauthDone) return Promise.resolve(true);
   return a.getRedirectResult().then(function(res){
     const u=res&&res.user;
-    if(u && u.email && !state.user){
+    if(u && u.email && !state.user && !__oauthDone){
+      __oauthDone=true; bxOAuthClear();
       googleNote('');
       loginAsGoogle({ email:u.email, name:u.displayName, picture:u.photoURL, sub:u.uid });
     }
@@ -3618,6 +3688,7 @@ function cloudDeleteItem(id){
   try{ db.collection('items').doc(id).delete().then(function(){ try{ cloudQueueRemove(id); }catch(e){} }).catch(function(){ try{ cloudFailNotify('hapus barang'); }catch(e){} }); }catch(e){}
 }
 function cloudSetUserDoc(){
+  try{ publishMyAvatar(); }catch(e){}   /* v1.12.1: pastikan foto profil naik ke cloud */
   const db=cloudDb(); const uid=cloudUid();
   const emailMe=String((state.user&&state.user.email)||'').toLowerCase();
   const ukey=userKeyOf(emailMe);
@@ -3652,6 +3723,8 @@ function cloudSetUserDoc(){
       pointsAt: Number(state.pointsAt)||0,   /* v1.11.2: cap waktu poin untuk penggabungan aman */
       badge: String((lv&&lv.L&&lv.L.name)||'').slice(0,40),
       badgeEmo: String((lv&&lv.L&&lv.L.emo)||'').slice(0,8),
+      avatar: String((state.user&&state.user.avatarUrl)||'').slice(0,400),   /* v1.12.1: foto profil (URL) agar terlihat pengguna lain */
+      mutariPass: !!(((state.accounts||{})[emailMe]||{}).pass),   /* v1.12.2: sudah punya password MUTARI? */
       followers: (typeof cloudFollowerCount==='function'?cloudFollowerCount():0)+(Number(state.extraFollowers)||0),
       following: cnt(sg&&sg.following),
       ig: String(so.ig||'').slice(0,60),
@@ -3778,6 +3851,8 @@ function cloudStartUsers(){
           points:(typeof v.points==='number'?v.points:Number(v.points)||0), tier:Number(v.tier)||0,
           pointsAt:Number(v.pointsAt||v.updatedAt||0),
           badge:v.badge||'', badgeEmo:v.badgeEmo||'', city:v.city||'', followers:Number(v.followers)||0,
+          avatar:String(v.avatar||'').slice(0,400),   /* v1.12.1: foto profil dari cloud */
+          mutariPass:!!v.mutariPass,                  /* v1.12.2: akun sudah punya password MUTARI */
           following:Number(v.following)||0, banned:!!v.banned, suspended:!!v.suspended};
         cu[d.id]=pub;
         const em=pub.email; if(em) be[em]=pub;
@@ -4245,7 +4320,7 @@ function itemCard(it,horizontal,showStats){
   const frameCls = ((state.frame && isMine(it))? ' frame-'+state.frame : '') + (bAct? ' boosted' : '');
   const oAcc=isMine(it)?null:((state.accounts||{})[String(it.ownerId||'').toLowerCase()]||{});
   const ownerNm=isMine(it)?((state.user&&state.user.name)||'Kamu'):(it.owner||'Pengguna');
-  const ownerPic=isMine(it)?((state.user&&state.user.avatar)||''):((oAcc&&oAcc.picture)||'');
+  const ownerPic=isMine(it)?((state.user&&state.user.avatar)||''):(cloudAvatarOf(it)||(oAcc&&oAcc.picture)||'');
   /* avatar pemilik dengan cincin warna sesuai tier — makin tinggi makin menyala */
   const ownerVer = isMine(it) ? myVerified() : isUserVerified(it.ownerUid||it.ownerId||it.owner||'');
   const avaBadge='<div class="item-owner" style="box-shadow:0 0 0 2px '+hexA(L.color,.8)+(t>=3?',0 0 '+(5+t*2)+'px '+hexA(L.color,.6):'')+'"><img src="'+avatarSrc({name:ownerNm, avatar:ownerPic})+'"></div>';
@@ -5492,6 +5567,51 @@ function avatarSrc(u){
   const ch=(name.charAt(0)||'M').toUpperCase().replace(/[<>&"']/g,'');
   const svg='<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><rect width="96" height="96" rx="48" fill="#12A97E"/><text x="48" y="63" font-family="Arial,Helvetica,sans-serif" font-size="44" font-weight="bold" fill="#ffffff" text-anchor="middle">'+ch+'</text></svg>';
   return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
+}
+/* v1.12.1: FOTO PROFIL PENGGUNA LAIN.
+   Sebelumnya foto pemilik barang hanya dicari di daftar akun PERANGKAT INI
+   (state.accounts), sehingga barang milik pengguna lain selalu jatuh ke inisial.
+   Sekarang foto juga dibaca dari daftar pengguna CLOUD (state.userByEmail /
+   state.cloudUsers) yang diisi cloudStartUsers(). */
+function cloudAvatarOf(it){
+  try{
+    if(!it) return '';
+    const be=state.userByEmail||{}, cu=state.cloudUsers||{};
+    const em=String(it.ownerEmail||'').toLowerCase();
+    if(em && be[em] && be[em].avatar) return be[em].avatar;
+    const keys=[String(it.ownerId||'').toLowerCase(), String(it.ownerUid||'').toLowerCase()];
+    try{ if(em) keys.push(userKeyOf(em)); }catch(e){}
+    for(let i=0;i<keys.length;i++){ const k=keys[i]; if(k && cu[k] && cu[k].avatar) return cu[k].avatar; }
+  }catch(e){}
+  return '';
+}
+/* Avatar disimpan sebagai base64 di perangkat. Agar pengguna LAIN bisa melihatnya,
+   avatar diunggah SEKALI ke Supabase Storage memakai pengunggah yang sudah ada
+   (cloudThumb), lalu yang dikirim ke cloud hanya ALAMATNYA (URL) - bukan base64 -
+   supaya dokumen users tidak membengkak. Bila unggah gagal, tampilan tetap inisial. */
+function __avHash(s){ let h=5381,i=String(s).length; while(i){ h=((h<<5)+h)^String(s).charCodeAt(--i); } return (h>>>0).toString(36)+'_'+(String(s).length>>>0).toString(36); }
+let __avatarPubBusy=false;
+function publishMyAvatar(){
+  try{
+    const u=state.user; if(!u) return;
+    const av=String(u.avatar||'');
+    if(!av){ if(u.avatarUrl){ u.avatarUrl=''; u.avatarKey=''; try{ LS.set('mutari_user',u); }catch(e){} } return; }
+    if(av.indexOf('data:')!==0){ if(u.avatarUrl!==av){ u.avatarUrl=av; u.avatarKey=av; try{ LS.set('mutari_user',u); }catch(e){} } return; }
+    const key=__avHash(av);
+    if(u.avatarUrl && u.avatarKey===key && String(u.avatarUrl).indexOf('http')===0) return;  /* sudah ada URL */
+    if(__avatarPubBusy) return;
+    if(typeof cloudThumb!=='function') return;
+    __avatarPubBusy=true;
+    cloudThumb(av, function(url){
+      __avatarPubBusy=false;
+      try{
+        if(url && String(url).indexOf('http')===0){
+          u.avatarUrl=url; u.avatarKey=key; try{ LS.set('mutari_user',u); }catch(e){}
+          try{ cloudSetUserDoc(); }catch(e){}   /* dorong URL ke cloud */
+        }
+      }catch(e){}
+    });
+  }catch(e){}
 }
 /* Feed marketplace = barang milikmu + barang akun lain di perangkat ini */
 function feedItems(){
@@ -7472,6 +7592,7 @@ function pickAvatar(){
     const r=new FileReader();
     r.onload=function(){
       state.user.avatar=r.result; LS.set('mutari_user',state.user);
+      try{ publishMyAvatar(); }catch(e){}   /* v1.12.1: unggah agar terlihat pengguna lain */
       const em=String((state.user&&state.user.email)||'').toLowerCase();
       const accounts=state.accounts||{};
       if(em && accounts[em]){ accounts[em].picture=r.result; state.accounts=accounts; LS.set('mutari_accounts',accounts); }
@@ -8935,7 +9056,7 @@ function vPostItem(it,index,total){
   const following=!mine && isFollowing(owner);
   const photos=(it.photos&&it.photos.length)?it.photos:(it.image?[it.image]:[]);
   const cmts=commentsOf(it.id);
-  const ownerPic=mine?((state.user&&state.user.avatar)||''):(ownerAcc.picture||'');
+  const ownerPic=mine?((state.user&&state.user.avatar)||''):(cloudAvatarOf(it)||ownerAcc.picture||'');
   const open=!!(state.postDescOpenMap && state.postDescOpenMap[it.id]);
   const k=pfKey(it.id);
   const q=pfQ(it.id);
@@ -9947,48 +10068,151 @@ function bxCodSheet(id){
     '</ul></div>'+
     '<button class="btn-ghost" style="margin-top:10px;width:100%" onclick="closeSheet()">Batal</button>');
 }
+/* --- COD: pemilih titik temu. Memakai kembali mesin peta lama
+       (loadLeaflet + findMeetPoints + geoMid/havKm + Nominatim),
+       jadi tidak ada sistem baru. Alur usul -> persetujuan pihak lain tetap sama. --- */
+var __bxCod={id:null,center:null,pts:[],point:null,map:null,markers:[],pin:null};
+
 function bxCodAuto(id){
   var b=findBarterById(id); if(!b) return;
-  toast('Mencari lokasi…');
-  var done=function(place,lat,lng){
-    var name=place||'Titik Temu Aman';
-    showBarterShipMap(b,name,lat,lng);
-    barterProposeMethod(id,'cod',name);
+  toast('Mencari lokasi publik terdekat…');
+  var open=function(center){
+    __bxCod.id=id; __bxCod.center=center||null; __bxCod.pts=[]; __bxCod.point=null;
+    bxCodSheetPick(id,true);
+    if(!center){ toast('Lokasi kamu belum tersedia — ketuk peta untuk memilih'); return; }
+    findMeetPoints(center,4000,function(list){ __bxCod.pts=list||[]; bxCodRenderReco(); });
   };
+  var me=myGeo();
+  if(me){ open(me); return; }
   try{
-    if(navigator.geolocation){
-      navigator.geolocation.getCurrentPosition(function(pos){
-        var lat=pos.coords.latitude, lng=pos.coords.longitude;
-        var name='Titik Temu Aman ('+lat.toFixed(4)+', '+lng.toFixed(4)+')';
-        try{
-          var pr=state.profile&&state.profile.method;
-          var addr=(state.profile&&(state.profile.display||''))||'';
-          if(addr) name='Titik Temu COD — '+addr;
-        }catch(e){}
-        done(name,lat,lng);
-      },function(){
-        var nm=(state.profile&&state.profile.display)||'Titik Temu COD';
-        done(nm,null,null);
-      },{timeout:9000,maximumAge:60000});
-    }else{
-      var nm2=(state.profile&&state.profile.display)||'Titik Temu COD';
-      done(nm2,null,null);
-    }
-  }catch(e){ done('Titik Temu COD',null,null); }
+    if(!navigator.geolocation){ open(null); return; }
+    navigator.geolocation.getCurrentPosition(function(pos){
+      var g={lat:pos.coords.latitude,lng:pos.coords.longitude,acc:Math.round(pos.coords.accuracy||0),at:Date.now()};
+      try{ state.geoCache=g; LS.set('mutari_geocache',g); }catch(e){}
+      open({lat:g.lat,lng:g.lng});
+    },function(){ open(null); },{enableHighAccuracy:true,timeout:12000,maximumAge:60000});
+  }catch(e){ open(null); }
 }
+
 function bxCodManual(id){
   var b=findBarterById(id); if(!b) return;
-  sheet('Lokasi COD Manual',
-    '<label class="form-label">Nama tempat / alamat titik temu</label>'+
-    '<input class="form-input" id="bxCodPlace" placeholder="Contoh: Kantor Kepala Desa Bakalan">'+
-    '<div class="bx-tips"><b>💡 Tips</b><ul><li>Sebutkan nama tempat yang jelas &amp; mudah ditemukan</li><li>Hindari tempat sepi</li></ul></div>'+
-    '<button class="btn-primary" style="margin-top:12px" onclick="bxCodManualSave(\''+id+'\')">Setuju &amp; Usulkan Lokasi Ini</button>'+
-    '<button class="btn-ghost" style="margin-top:8px;width:100%" onclick="closeSheet()">Batal</button>');
+  __bxCod.id=id; __bxCod.pts=[]; __bxCod.point=null;
+  __bxCod.center=myGeo()||theirGeo(b)||null;
+  bxCodSheetPick(id,false);
 }
-function bxCodManualSave(id){
+
+function bxCodSheetPick(id,withReco){
+  var p=__bxCod.point;
+  var reco;
+  if(!withReco){
+    reco='<div class="muted" style="padding:6px 0">Geser peta lalu <b>ketuk</b> untuk menaruh pin di lokasi COD, atau tulis nama tempat di bawah.</div>';
+  } else if(!__bxCod.center){
+    reco='<div class="muted" style="padding:6px 0">Lokasi kamu belum tersedia. Ketuk peta untuk memilih titik, atau tulis nama tempat di bawah.</div>';
+  } else {
+    reco='<div class="muted" style="padding:6px 0">Mencari lokasi aman &amp; ramai di sekitar… (butuh internet)</div>';
+  }
+  sheet('Atur Lokasi COD',
+    '<div style="height:240px;border-radius:12px;overflow:hidden;background:#111;border:1px solid var(--line);margin:8px 0" id="bxCodMap"></div>'+
+    '<div class="muted" id="bxCodInfo" style="font-size:12px;line-height:1.5"></div>'+
+    '<div id="bxCodReco" style="margin-top:6px">'+reco+'</div>'+
+    '<label class="form-label" style="margin-top:10px">Nama tempat / alamat titik temu</label>'+
+    '<input class="form-input" id="bxCodPlace" placeholder="Contoh: Kantor Kepala Desa Bakalan" value="'+esc(p?p.name:'')+'">'+
+    '<div class="bx-tips"><b>💡 Tips</b><ul><li>Sebutkan nama tempat yang jelas &amp; mudah ditemukan</li><li>Pilih tempat ramai &amp; publik, hindari tempat sepi</li></ul></div>'+
+    '<button class="btn-primary" style="margin-top:12px" onclick="bxCodSave(\''+id+'\')">Setuju &amp; Usulkan Lokasi Ini</button>'+
+    '<button class="btn-ghost" style="margin-top:8px;width:100%" onclick="closeSheet()">Batal</button>');
+  setTimeout(bxCodMapInit,120);
+}
+
+function bxCodMapInit(){
+  var el=document.getElementById('bxCodMap'); if(!el) return;
+  loadLeaflet().then(function(ok){
+    if(!ok){ el.innerHTML='<div class="muted" style="padding:18px;text-align:center">Peta butuh internet. Tulis titik temu manual di bawah.</div>'; return; }
+    try{ if(__bxCod.map){ __bxCod.map.remove(); } }catch(e){}
+    __bxCod.map=null; __bxCod.markers=[]; __bxCod.pin=null;
+    var b=findBarterById(__bxCod.id)||{};
+    var c=__bxCod.center||myGeo()||theirGeo(b)||{lat:-6.2,lng:106.8};
+    __bxCod.map=L.map(el,{zoomControl:true,attributionControl:false}).setView([c.lat,c.lng],13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(__bxCod.map);
+    __bxCod.map.on('click',function(e){ bxCodSetPoint(e.latlng.lat,e.latlng.lng,''); });
+    bxCodDrawMarkers();
+    if(__bxCod.point) bxCodSetPoint(__bxCod.point.lat,__bxCod.point.lng,__bxCod.point.name);
+    setTimeout(function(){ try{ __bxCod.map.invalidateSize(); }catch(e){} },250);
+  });
+}
+
+function bxCodDrawMarkers(){
+  if(!__bxCod.map) return;
+  (__bxCod.markers||[]).forEach(function(m){ try{ __bxCod.map.removeLayer(m); }catch(e){} }); __bxCod.markers=[];
+  var b=findBarterById(__bxCod.id)||{};
+  var me=myGeo(), th=theirGeo(b);
+  var add=function(g,color,label){ if(!g) return; var m=L.marker([g.lat,g.lng],{icon:dot(color)}).addTo(__bxCod.map); m.bindPopup(label); __bxCod.markers.push(m); };
+  add(me,'#12A97E','Lokasi kamu');
+  add(th,'#F59E0B','Lokasi pihak lain');
+  if(me&&th) add(geoMid(me,th),'#3B82F6','Titik tengah seimbang');
+  (__bxCod.pts||[]).forEach(function(q){
+    var m=L.marker([q.lat,q.lng],{icon:dot('#8B5CF6')}).addTo(__bxCod.map); m.bindPopup(q.emoji+' '+q.name+' · '+q.label); __bxCod.markers.push(m);
+  });
+}
+
+function bxCodRenderReco(){
+  var el=document.getElementById('bxCodReco'); if(!el) return;
+  var list=__bxCod.pts||[];
+  if(!list.length){
+    el.innerHTML='<div class="muted" style="padding:6px 0">Lokasi aman tidak ditemukan (butuh internet). Ketuk peta untuk memilih, atau tulis nama tempat di bawah.</div>';
+    return;
+  }
+  el.innerHTML='<div class="muted" style="padding:6px 0 4px;font-weight:700">Rekomendasi titik temu (aman &amp; ramai):</div>'+list.map(function(q,i){
+    return '<button onclick="bxCodUsePoint('+i+')" style="display:flex;gap:9px;align-items:center;width:100%;text-align:left;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:11px;padding:9px;margin-bottom:6px;color:inherit">'+
+      '<span style="font-size:18px">'+q.emoji+'</span><span style="flex:1;min-width:0"><b style="font-size:13px">'+esc(q.name)+'</b>'+
+      '<div class="muted" style="font-size:11.5px">'+esc(q.label)+' · '+(q.dist*1000).toFixed(0)+' m dari titik tengah</div></span></button>';
+  }).join('');
+  bxCodDrawMarkers();
+}
+
+function bxCodUsePoint(i){
+  var q=(__bxCod.pts||[])[i]; if(!q) return;
+  bxCodSetPoint(q.lat,q.lng,q.name);
+  var el=document.getElementById('bxCodPlace'); if(el) el.value=q.emoji+' '+q.name+' ('+q.label+')';
+  var info=document.getElementById('bxCodInfo');
+  if(info) info.innerHTML='Titik temu dipilih: <b>'+esc(q.name)+'</b> ('+esc(q.label)+')<br><span class="muted">'+q.lat.toFixed(5)+', '+q.lng.toFixed(5)+' · '+(q.dist*1000).toFixed(0)+' m dari titik tengah</span>';
+  toast('Titik temu dipilih: '+q.name);
+}
+
+function bxCodSetPoint(lat,lng,name){
+  __bxCod.point={lat:Number(lat),lng:Number(lng),name:String(name||'').trim()};
+  if(__bxCod.map){
+    try{ if(__bxCod.pin) __bxCod.map.removeLayer(__bxCod.pin); }catch(e){}
+    __bxCod.pin=L.marker([lat,lng],{icon:dot('#EF4444')}).addTo(__bxCod.map).bindPopup('Titik temu terpilih');
+    try{ __bxCod.map.setView([lat,lng],16); }catch(e){}
+  }
+  var info=document.getElementById('bxCodInfo');
+  if(info) info.innerHTML='Titik dipilih: <b>'+Number(lat).toFixed(5)+', '+Number(lng).toFixed(5)+'</b>';
+  var el=document.getElementById('bxCodPlace');
+  if(el && !String(el.value||'').trim() && name) el.value=name;
+  if(!name) bxCodReverse(lat,lng);
+}
+
+function bxCodReverse(lat,lng){
+  try{
+    fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat='+lat+'&lon='+lng+'&accept-language=id')
+      .then(function(r){ return r.ok?r.json():null; })
+      .then(function(j){
+        if(!j) return;
+        var a=j.address||{};
+        var nm=j.name||a.road||a.village||a.town||a.city||a.suburb||j.display_name;
+        if(!nm) return;
+        __bxCod.point.name=String(nm).split(',')[0];
+        var el=document.getElementById('bxCodPlace');
+        if(el && !String(el.value||'').trim()) el.value=__bxCod.point.name;
+      }).catch(function(){});
+  }catch(e){}
+}
+
+function bxCodSave(id){
   var el=document.getElementById('bxCodPlace'); var v=(el&&el.value||'').trim();
   if(v.length<4){ toast('Tulis nama lokasi dulu ya'); return; }
-  showBarterShipMap(findBarterById(id),v,null,null);
+  var p=__bxCod.point;
+  showBarterShipMap(findBarterById(id),v,p?p.lat:null,p?p.lng:null);
   barterProposeMethod(id,'cod',v);
 }
 function showBarterShipMap(b,name,lat,lng){
@@ -11279,6 +11503,32 @@ async function createPassword(){
     if(state.pwSignup===true && v1!==v2) return fail('Konfirmasi password tidak sama');
   }
 
+  /* v1.12.2: PENGGUNA GOOGLE MEMBUAT PASSWORD MUTARI.
+     Password disimpan ke AKUN (Supabase Auth lewat updateUser) supaya berlaku di
+     SEMUA perangkat, lalu juga disimpan di perangkat ini seperti akun biasa.
+     Tidak mengubah alur daftar manual di bawah. */
+  if(state.pwGoogle===true){
+    if(!(v1.length>=6 && /\d/.test(v1))) return fail('Minimal 6 karakter dan harus ada angka');
+    if(v1!==v2) return fail('Konfirmasi password tidak sama');
+    var aG=null; try{ aG=(fbState()&&fbState().auth)||null; }catch(e){}
+    if(!aG || typeof aG.updateUser!=='function') return fail('Akun Google belum siap. Tunggu sebentar lalu coba lagi.');
+    try{ await aG.updateUser({ password: v1 }); }
+    catch(err){ return fail(bxAuthErr(err)); }
+    var accG=accounts[email]||{};
+    accG.name=accG.name||cleanName(p.name)||email.split('@')[0];
+    accG.pass=await hashPassword(v1); accG.hashed=true; accG.google=true; accG.hasMutariPass=true; accG.time=Date.now();
+    accounts[email]=accG; state.accounts=accounts; LS.set('mutari_accounts',accounts);
+    state.pwGoogle=false;
+    var cnmG=cleanName(accG.name);
+    state.user={ name:isValidName(cnmG)?cnmG:'', email:email, avatar:accG.picture||'', verified:false, google:true, profileComplete:isValidName(cnmG) };
+    LS.set('mutari_user', state.user);
+    try{ applyAccount(email); }catch(e){}
+    try{ cloudSetUserDoc(); }catch(e){}   /* tandai di cloud: akun ini sudah punya password */
+    enterApp();
+    toast('Password MUTARI dibuat ✓ — berlaku di semua perangkat');
+    return;
+  }
+
   /* --- jalan utama: Firebase Authentication (UID = AKUN) --- */
   if(fbConfigured()){
     try{ await fbConnect(); }catch(e){}
@@ -11326,396 +11576,4 @@ async function createPassword(){
     if(res.rehash){ acc.pass=await hashPassword(v1); acc.hashed=true; }
     acc.time=Date.now(); state.accounts=accounts; LS.set('mutari_accounts',accounts);
   } else {
-    acc.pass=await hashPassword(v1); acc.hashed=true; acc.time=Date.now();
-    state.accounts=accounts; LS.set('mutari_accounts',accounts);
-  }
-  var cnm2=cleanName((accounts[email]&&accounts[email].name)||p.name||'');
-  state.user={name:isValidName(cnm2)?cnm2:'', email:email, avatar:'', verified:false, profileComplete:isValidName(cnm2)};
-  LS.set('mutari_user', state.user);
-  try{ applyAccount(email); }catch(e){}
-  enterApp();
-  toast(creating?'Akun dibuat! Data disimpan untuk email ini.':'Selamat datang kembali! Data akun dimuat.');
-}
-
-/* ---------- C. MULAI BERSIH v3 (sekali saat pembaruan) ----------
-   Membersihkan SELURUH data lokal MUTARI di perangkat ini: semua kunci penyimpanan
-   yang berawalan "mutari" (data global, data per akun 'mutari::<akun>::', snapshot
-   'mutari_acc::', daftar akun, pengaturan, dan sesi admin). Setelah dibersihkan,
-   aplikasi dimuat ulang agar tidak ada sisa data lama di memori.
-   Fitur dan sistem MUTARI tidak diubah, ditambah, maupun dihilangkan. */
-(function(){
-  try{
-    if(localStorage.getItem('mutari_v3_clean')==='1') return;
-    try{
-      for(var i=localStorage.length-1;i>=0;i--){
-        var k=localStorage.key(i);
-        if(k && k.indexOf('mutari')===0){ try{ localStorage.removeItem(k); }catch(e){} }
-      }
-    }catch(e){}
-    try{ localStorage.setItem('mutari_v3_clean','1'); }catch(e){}
-    try{ sessionStorage.clear(); }catch(e){}
-    try{ location.reload(); }catch(e){}
-  }catch(e){}
-})();
-
-/* ---------- D. KELUAR: JANGAN HAPUS DATA AKUN ---------- */
-function logout(){
-  var email=(state.user&&state.user.email)||null;
-  try{ closeSheet(); }catch(e){}
-  try{ var a=(fbState()&&fbState().auth)||null; if(a&&a.signOut) a.signOut(); }catch(e){}
-  state.user=null; LS.set('mutari_user',null);
-  __accNs='';                                   /* lepas namespace akun */
-  try{ resetLiveData(); }catch(e){}              /* hanya mereset memori, bukan data akun */
-  state.authMode='signin'; try{ toggleAuth(); toggleAuth(); }catch(e){}
-  try{ showScreen('auth'); }catch(e){}
-  toast(email?('Kamu sudah keluar. Data akun '+email+' tetap tersimpan.'):'Kamu sudah keluar');
-}
-
-
-/* =================== INIT =================== */
-(function(){ try{ socialMigrateComments(); }catch(e){} try{ migrateNotifLog(); }catch(e){} try{ checkTierUp(); }catch(e){} upgradeLegacyPasswords(); applyTheme(); if(typeof renderAccountList==='function') try{renderAccountList();}catch(e){} var av=$('#authVer'); if(av){ av.textContent='MUTARI v'+APP_VERSION+' · Build '+APP_BUILD;
-  try{ av.addEventListener('pointerdown',verDown); av.addEventListener('pointerup',verUp);
-       av.addEventListener('pointerleave',verCancel); av.addEventListener('pointercancel',verCancel); }catch(e){} }
-try{ applyDevMode(); }catch(e){} try{ syncNotifDot(); }catch(e){} try{ syncSanction(); }catch(e){} try{ cloudSyncMyViolations(); }catch(e){} try{ checkBannedOverlay(); }catch(e){} })();
-try{ window.__MUTARI_READY=true; }catch(e){}
-if(state.user){ enterApp(); }
-else { toggleAuth(); toggleAuth(); showScreen('auth'); }
-/* Bila Portal Admin sedang terbuka sebelum refresh, buka kembali otomatis. */
-try{ if(sessionStorage.getItem('mutari_admin_mode')==='1') openAdminPortal(); }catch(e){}
-/* =====================================================================================
-   PERBAIKAN MUTARI — MODUL 1: IDENTITAS PENULISAN CLOUD  (v1.12.0-p1)
-   -------------------------------------------------------------------------------------
-   MASALAH (ditemukan dari diagnosa langsung di Supabase):
-     Aturan keamanan Supabase `mutari_can_write` MENOLAK penulisan bila ada field
-     kepemilikan yang dikenali tetapi nilainya TIDAK cocok dengan akun yang login.
-     Field yang dikenali: uid, ownerUid, ownerKey, owner, email, userEmail, byEmail,
-     ownerEmail, from, to, targetEmail, authorEmail, reporterEmail.
-
-     - Dokumen BARTER ditulis dengan identitas LAWAN di ownerEmail/ownerUid/ownerKey,
-       sedangkan identitas PENGIRIM disimpan di fromUid/fromEmail — dan kedua field itu
-       TIDAK dikenali aturan. Akibatnya SETIAP penawaran barter DITOLAK server
-       (col `barters` = 0 baris di cloud) sehingga barter tak pernah sampai ke lawan
-       dan notifikasi tak pernah terkirim.
-     - Dokumen BARANG hanya mengandalkan ownerUid.
-
-   PERBAIKAN (aman, tanpa mengubah fitur lain):
-     Setiap dokumen barang & barter kini menyertakan `uid` dan `byEmail` milik akun
-     yang sedang menulis — dua field yang MEMANG dikenali aturan keamanan — sehingga
-     penulisan diizinkan server.
-   ===================================================================================== */
-(function(){
-  /* --- Barang: tambah uid + byEmail saat membangun dokumen cloud --- */
-  try{
-    if(typeof cloudItemDoc==='function'){
-      var _cloudItemDoc=cloudItemDoc;
-      cloudItemDoc=function(it){
-        var d=_cloudItemDoc(it);
-        try{ d.uid=cloudUid(); }catch(e){}
-        try{ d.byEmail=String((state.user&&state.user.email)||'').toLowerCase(); }catch(e){}
-        return d;
-      };
-    }
-  }catch(e){}
-  /* --- Barter: tambah uid + byEmail saat membangun dokumen barter --- */
-  try{
-    if(typeof bxBarterDoc==='function'){
-      var _bxBarterDoc=bxBarterDoc;
-      bxBarterDoc=function(b){
-        var d=_bxBarterDoc(b);
-        try{ d.uid=sbUid(); }catch(e){}
-        try{ d.byEmail=myEmail(); }catch(e){}
-        return d;
-      };
-    }
-  }catch(e){}
-})();
-/* =====================================================================================
-   PERBAIKAN MUTARI — MODUL 2: GAMBAR KE SUPABASE STORAGE  (v1.12.0-p2)
-   -------------------------------------------------------------------------------------
-   MASALAH:
-     Gambar barang disimpan sebagai base64 DI DALAM dokumen database. Akibatnya:
-       - dokumen membengkak, gambar bisa terpangkas sehingga tidak muncul,
-       - beranda berat karena memuat gambar base64.
-
-   PERBAIKAN (aman, tanpa mengubah fitur lain):
-     Setiap gambar barang diunggah ke Supabase Storage (bucket "app"), lalu yang
-     disimpan ke database hanya ALAMAT (URL) gambarnya. Bila unggah gagal, otomatis
-     kembali memakai cara lama (base64) supaya gambar tetap tersimpan.
-
-   CATATAN: bucket "app" harus bersifat PUBLIC agar gambar bisa tampil.
-   ===================================================================================== */
-(function(){
-  var _origThumb = (typeof cloudThumb === 'function') ? cloudThumb : null;
-  var BUCKET = 'app';
-  var CACHE = window.__MUTARI_IMG_URLS__ || (window.__MUTARI_IMG_URLS__ = {});
-  try{
-    var saved = localStorage.getItem('mutari_imgurls');
-    if(saved){ var o=JSON.parse(saved); if(o){ for(var k in o){ if(o[k]) CACHE[k]=o[k]; } } }
-  }catch(e){}
-  function persistCache(){ try{ localStorage.setItem('mutari_imgurls', JSON.stringify(CACHE)); }catch(e){} }
-  function hashStr(s){ var h=5381, i=s.length; while(i){ h=((h<<5)+h) ^ s.charCodeAt(--i); } return 'i'+(h>>>0).toString(36)+'_'+(s.length>>>0).toString(36); }
-  function sbClient(){
-    if(window.__MUTARI_SB__) return Promise.resolve(window.__MUTARI_SB__);
-    if(window.__MUTARI_READY__) return window.__MUTARI_READY__;
-    return Promise.reject(new Error('supabase belum siap'));
-  }
-  function fallback(src, cb){ try{ if(_origThumb){ _origThumb(src, cb); } else { cb(''); } }catch(e){ try{ cb(''); }catch(e2){} } }
-  /* Kecilkan gambar lalu jadikan blob JPEG (siap diunggah). */
-  function toBlob(src, cb){
-    try{
-      var img = new Image();
-      img.onload = function(){
-        try{
-          var MAX = (typeof CLOUD_IMG_MAX !== 'undefined') ? CLOUD_IMG_MAX : 640;
-          var w = img.width||MAX, h = img.height||MAX;
-          if(w>h && w>MAX){ h=Math.round(h*MAX/w); w=MAX; }
-          else if(h>=w && h>MAX){ w=Math.round(w*MAX/h); h=MAX; }
-          var c=document.createElement('canvas'); c.width=w; c.height=h;
-          var ctx=c.getContext('2d'); ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,w,h); ctx.drawImage(img,0,0,w,h);
-          if(c.toBlob){ c.toBlob(function(b){ cb(b||null); }, 'image/jpeg', 0.72); }
-          else { cb(null); }
-        }catch(e){ cb(null); }
-      };
-      img.onerror=function(){ cb(null); };
-      img.src=src;
-    }catch(e){ cb(null); }
-  }
-  cloudThumb = function(src, cb){
-    try{
-      if(!src){ cb(''); return; }
-      src = String(src);
-      if(src.indexOf('data:')!==0){ cb(src); return; }   /* sudah berupa URL */
-      var key = hashStr(src);
-      if(CACHE[key]){ cb(CACHE[key]); return; }           /* sudah pernah diunggah */
-      if(window.__MUTARI_STORAGE_PRIVATE__){ fallback(src, cb); return; }  /* storage tak publik -> cara lama */
-      toBlob(src, function(blob){
-        if(!blob){ fallback(src, cb); return; }
-        sbClient().then(function(sb){
-          if(!sb || !sb.storage){ fallback(src, cb); return; }
-          var uid=''; try{ uid = String(cloudUid()||''); }catch(e){}
-          var path = 'items/' + (uid||'anon') + '/' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8) + '.jpg';
-          sb.storage.from(BUCKET).upload(path, blob, { contentType:'image/jpeg', upsert:false, cacheControl:'31536000' })
-            .then(function(res){
-              if(res && res.error){ throw res.error; }
-              var pub = sb.storage.from(BUCKET).getPublicUrl(path);
-              var url = (pub && pub.data && pub.data.publicUrl) || '';
-              if(!url){ fallback(src, cb); return; }
-              /* Pastikan URL publik benar-benar bisa dibuka; kalau tidak, pakai cara lama. */
-              var probe = new Image();
-              probe.onload = function(){ CACHE[key]=url; persistCache(); cb(url); };
-              probe.onerror = function(){ window.__MUTARI_STORAGE_PRIVATE__=true; fallback(src, cb); };
-              probe.src = url;
-            })
-            .catch(function(){ fallback(src, cb); });
-        }).catch(function(){ fallback(src, cb); });
-      });
-    }catch(e){ fallback(src, cb); }
-  };
-})();
-/* =====================================================================================
-   PERBAIKAN MUTARI — MODUL 3: BARTER & NOTIFIKASI  (v1.12.0-p3)
-   -------------------------------------------------------------------------------------
-   MASALAH:
-     1) Sisi PENGIRIM penawaran hanya memantau barter lewat UID perangkat. Bila UID
-        berubah (sesi tamu dibuat ulang / login email menyusul), pembaruan dari lawan
-        (diterima/ditolak) TIDAK pernah sampai -> barter tampak "macet menunggu respon".
-     2) Pendengar notifikasi bisa tidak pernah dinyalakan bila pendengar barter sudah aktif.
-     3) Saat penawaran masuk, pengguna tidak langsung diberi tanda di layar.
-
-   PERBAIKAN (aman, tidak mengubah fitur lain):
-     A. Pendengar tambahan untuk barter KIRIMAN sendiri lewat EMAIL (bukan hanya UID),
-        sehingga status terbaru dari lawan selalu tersinkron.
-     B. Memastikan pendengar barter & notifikasi SELALU aktif (dinyalakan ulang bila perlu).
-     C. Tanda langsung di layar (toast) saat ada penawaran barter masuk.
-     D. Cegah notifikasi ganda (kiriman dobel dalam waktu berdekatan).
-   ===================================================================================== */
-(function(){
-  /* ---------- A. pendengar barter KIRIMAN sendiri lewat email ---------- */
-  function bxApplyOutgoing(snap){
-    var changed=false;
-    var FIELDS=['respondBy','method','methodBy','methodName','methodApproved','methodApprovedBy','insAmount',
-      'deposits','insurance','confirms','confirmPhotos','reviews','rewarded','refunded','reviewReleased',
-      'ship','trail','compensations','compClaimed','acceptedAt','cancelledAt','cancelledBy','notifiedStart','notifiedEnd'];
-    try{
-      snap.forEach(function(x){
-        var v=(x && x.data && x.data())||{};
-        var b=(state.barters||[]).find(function(y){ return y && (y.cloudId===x.id || y.id===x.id); });
-        if(!b) return;
-        if(v.status && b.status!==v.status){ b.status=v.status; changed=true; }
-        FIELDS.forEach(function(k){ if(v[k]!==undefined){ b[k]=v[k]; changed=true; } });
-        if(v.doneAt) b.doneTime=Number(v.doneAt);
-      });
-    }catch(e){}
-    if(changed){
-      try{ LS.set('mutari_barters',state.barters); }catch(e){}
-      try{ render(); }catch(e){}
-      try{ negoRefresh(); }catch(e){}
-      try{ barterTick(); }catch(e){}
-    }
-    return changed;
-  }
-  function bxListenMyOutgoing(){
-    try{
-      var db=sbDb(); if(!db) return;
-      var me=myEmail(); if(!me) return;
-      try{ if(state.bxOutUnsub) state.bxOutUnsub(); }catch(e){}
-      state.bxOutUnsub=db.collection('barters').where('fromEmail','==',me).limit(200)
-        .onSnapshot(function(snap){ bxApplyOutgoing(snap); }, function(){});
-    }catch(e){}
-  }
-
-  /* ---------- B. pastikan pendengar selalu aktif ---------- */
-  try{
-    var _ensure = (typeof bxEnsureListeners==='function') ? bxEnsureListeners : null;
-    bxEnsureListeners = function(){
-      try{ if(_ensure) _ensure(); }catch(e){}
-      try{
-        if(!sbOnline()) return;
-        if(!state.bxOutUnsub){ try{ bxListenMyOutgoing(); }catch(e){} }
-        if(!state.sbNotifUnsub){ try{ sbListenNotifications(); }catch(e){} }
-        if(!state.sbBarterUnsub && !state.sbBarterUnsub2 && !state.sbBarterUnsub3 && !state.sbBarterUnsub4){ try{ sbListenBarters(); }catch(e){} }
-      }catch(e){}
-    };
-  }catch(e){}
-
-  /* ---------- C. tanda langsung saat penawaran barter masuk ---------- */
-  try{
-    var _start = (typeof bxNotifyStart==='function') ? bxNotifyStart : null;
-    bxNotifyStart = function(b){
-      try{ if(_start) _start(b); }catch(e){}
-      try{ if(b && barterIsIncoming(b)) toast('\ud83d\udc8c Penawaran barter masuk \u2014 buka Barter untuk Terima / Tolak'); }catch(e){}
-    };
-  }catch(e){}
-
-  /* ---------- D. cegah notifikasi ganda ---------- */
-  try{
-    var _notify = (typeof notifyUser==='function') ? notifyUser : null;
-    var _recent = {};
-    notifyUser = function(email,title,body,kind){
-      try{
-        var key=String(email||'').toLowerCase()+'|'+String(title||'')+'|'+String(kind||'');
-        var now=Date.now();
-        if(_recent[key] && (now-_recent[key])<12000) return;
-        _recent[key]=now;
-      }catch(e){}
-      try{ if(_notify) return _notify(email,title,body,kind); }catch(e){}
-    };
-  }catch(e){}
-
-  /* ---------- E. segarkan saat app kembali ke depan ---------- */
-  try{
-    document.addEventListener('visibilitychange', function(){
-      try{ if(document.visibilityState==='visible'){ if(!state.bxOutUnsub){ bxListenMyOutgoing(); } barterTick(); } }catch(e){}
-    });
-  }catch(e){}
-})();
-/* =====================================================================================
-   PERBAIKAN MUTARI — MODUL 4: LOGIN MULTI-AKUN  (v1.12.0-p4)
-   -------------------------------------------------------------------------------------
-   MASALAH:
-     Halaman login hanya menampilkan SATU akun terakhir (ACCOUNT_HISTORY_MAX = 1),
-     sehingga pengguna yang punya beberapa akun di satu perangkat hanya melihat 1 akun.
-
-   PERBAIKAN (aman, tidak mengubah fitur lain):
-     Menampilkan SEMUA akun yang tersimpan di perangkat pada halaman login, di bawah
-     akun terakhir. Menekan salah satu akun memakai pemilih akun bawaan aplikasi
-     (pickAccount), jadi alurnya tetap sama. Daftar akun juga dipastikan tersimpan.
-   ===================================================================================== */
-(function(){
-  function bxEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
-  function bxIsAdmin(m){ try{ return isAdminEmail(m); }catch(e){ return false; } }
-  function bxMoreAccounts(){
-    var el=document.getElementById('authAccounts');
-    if(!el) return;
-    var accounts=(typeof state!=='undefined' && state.accounts) ? state.accounts : null;
-    if(!accounts) return;
-    var emails=Object.keys(accounts).filter(function(m){ return !bxIsAdmin(m); })
-      .sort(function(a,b){ return ((accounts[b]&&accounts[b].time)||0)-((accounts[a]&&accounts[a].time)||0); });
-    if(emails.length<=1) return;
-    var html='';
-    emails.slice(1).forEach(function(m){
-      var a=accounts[m]||{};
-      var nm=a.name || String(m).split('@')[0];
-      var ini=String(nm).trim().charAt(0).toUpperCase()||'?';
-      html+='<button type="button" class="bx-acct-item" onclick="pickAccount(\''+bxEsc(m)+'\')" '
-        +'style="display:flex;align-items:center;gap:12px;width:100%;margin-top:10px;padding:12px 14px;border-radius:16px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:inherit;font:inherit;text-align:left;cursor:pointer">'
-        +'<span style="flex:0 0 38px;width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px">'+bxEsc(ini)+'</span>'
-        +'<span style="display:flex;flex-direction:column;line-height:1.25;min-width:0">'
-        +'<b style="font-size:14px">'+bxEsc(nm)+'</b>'
-        +'<small style="opacity:.6;font-size:12px;overflow:hidden;text-overflow:ellipsis">'+bxEsc(m)+'</small>'
-        +'</span></button>';
-    });
-    el.insertAdjacentHTML('beforeend', html);
-  }
-  try{
-    if(typeof renderAccountList==='function'){
-      var _r=renderAccountList;
-      renderAccountList=function(){ try{ _r(); }catch(e){} try{ bxMoreAccounts(); }catch(e){} };
-    }
-  }catch(e){}
-  /* Pastikan daftar akun selalu tersimpan & tampil saat halaman auth dibuka. */
-  try{ if(state && state.accounts && Object.keys(state.accounts).length){ LS.set('mutari_accounts', state.accounts); } }catch(e){}
-  try{
-    document.addEventListener('DOMContentLoaded', function(){ try{ if(document.getElementById('authAccounts')) bxMoreAccounts(); }catch(e){} });
-  }catch(e){}
-})();
-
-/* ================= MUTARI MODUL 6 (v1.12.0-p6) =================
-   PERBAIKAN: peta lokasi kirim pada panel detail barter.
-
-   MASALAH (temuan audit statis):
-     - negoRefresh() memanggil negMapInit(b) setiap kali panel barter
-       dirender dan b.ship.lat terisi.
-     - Tapi elemen <div id="negoMap"> TIDAK PERNAH ada di template
-       negoHtml() -> negMapInit() langsung `return` -> peta tidak tampil.
-
-   SOLUSI:
-     - Tambahkan <div id="negoMap"> ke HTML panel tepat setelah baris
-       lokasi (📍), hanya bila b.ship.lat ada. negMapInit() bawaan
-       aplikasi lalu merender peta Leaflet seperti seharusnya.
-
-   CATATAN (bintang ulasan & pratinjau bukti):
-     - "#revStars" dan "#negoProofPrev" adalah sisa versi lama.
-       Fitur yang sama SUDAH aktif di UI saat ini dengan nama lain:
-         * bintang ulasan  -> #bxStars  + bxStar(n)   (openReview)
-         * pratinjau bukti -> #bxProof  + bxProofPick (baris konfirmasi)
-       Karena itu TIDAK ditambahkan ulang, supaya tidak ada kontrol dobel.
-   =============================================================== */
-(function () {
-  try {
-    if (typeof negoHtml !== 'function') return;
-    var __origNegoHtml = negoHtml;
-
-    negoHtml = function (b) {
-      var html = __origNegoHtml.apply(this, arguments);
-      try {
-        if (!b || !b.ship || b.ship.lat == null) return html;
-        var s = String(html);
-        if (s.indexOf('id="negoMap"') >= 0) return html; /* sudah ada */
-
-        var mapDiv = '<div id="negoMap" style="height:190px;border-radius:14px;overflow:hidden;' +
-          'background:#111;border:1px solid rgba(255,255,255,.12);margin:10px 0"></div>';
-
-        /* sisipkan tepat setelah baris lokasi (📍 ...) */
-        var i = s.indexOf('\uD83D\uDCCD'); /* 📍 */
-        if (i >= 0) {
-          var j = s.indexOf('</div>', i);
-          if (j >= 0) {
-            var at = j + 6;
-            return s.slice(0, at) + mapDiv + s.slice(at);
-          }
-        }
-        /* cadangan: sisipkan sebelum area chat */
-        var m = '<div class="bx-chat">';
-        if (s.indexOf(m) >= 0) return s.replace(m, mapDiv + m);
-      } catch (e) {}
-      return html;
-    };
-
-    try { window.negoHtml = negoHtml; } catch (e) {}
-  } catch (e) {}
-})();
-
-</script>
-</body>
-</html>
+    acc.pass=await ha
