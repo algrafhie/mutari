@@ -12511,6 +12511,103 @@ try{ if(sessionStorage.getItem('mutari_admin_mode')==='1') openAdminPortal(); }c
     }catch(e){ fallback(src, cb); }
   };
 })();
+/* =====================================================================================
+   PERBAIKAN MUTARI — MODUL 3: BARTER & NOTIFIKASI  (v1.12.0-p3)
+   -------------------------------------------------------------------------------------
+   MASALAH:
+     1) Sisi PENGIRIM penawaran hanya memantau barter lewat UID perangkat. Bila UID
+        berubah (sesi tamu dibuat ulang / login email menyusul), pembaruan dari lawan
+        (diterima/ditolak) TIDAK pernah sampai -> barter tampak "macet menunggu respon".
+     2) Pendengar notifikasi bisa tidak pernah dinyalakan bila pendengar barter sudah aktif.
+     3) Saat penawaran masuk, pengguna tidak langsung diberi tanda di layar.
+
+   PERBAIKAN (aman, tidak mengubah fitur lain):
+     A. Pendengar tambahan untuk barter KIRIMAN sendiri lewat EMAIL (bukan hanya UID),
+        sehingga status terbaru dari lawan selalu tersinkron.
+     B. Memastikan pendengar barter & notifikasi SELALU aktif (dinyalakan ulang bila perlu).
+     C. Tanda langsung di layar (toast) saat ada penawaran barter masuk.
+     D. Cegah notifikasi ganda (kiriman dobel dalam waktu berdekatan).
+   ===================================================================================== */
+(function(){
+  /* ---------- A. pendengar barter KIRIMAN sendiri lewat email ---------- */
+  function bxApplyOutgoing(snap){
+    var changed=false;
+    var FIELDS=['respondBy','method','methodBy','methodName','methodApproved','methodApprovedBy','insAmount',
+      'deposits','insurance','confirms','confirmPhotos','reviews','rewarded','refunded','reviewReleased',
+      'ship','trail','compensations','compClaimed','acceptedAt','cancelledAt','cancelledBy','notifiedStart','notifiedEnd'];
+    try{
+      snap.forEach(function(x){
+        var v=(x && x.data && x.data())||{};
+        var b=(state.barters||[]).find(function(y){ return y && (y.cloudId===x.id || y.id===x.id); });
+        if(!b) return;
+        if(v.status && b.status!==v.status){ b.status=v.status; changed=true; }
+        FIELDS.forEach(function(k){ if(v[k]!==undefined){ b[k]=v[k]; changed=true; } });
+        if(v.doneAt) b.doneTime=Number(v.doneAt);
+      });
+    }catch(e){}
+    if(changed){
+      try{ LS.set('mutari_barters',state.barters); }catch(e){}
+      try{ render(); }catch(e){}
+      try{ negoRefresh(); }catch(e){}
+      try{ barterTick(); }catch(e){}
+    }
+    return changed;
+  }
+  function bxListenMyOutgoing(){
+    try{
+      var db=sbDb(); if(!db) return;
+      var me=myEmail(); if(!me) return;
+      try{ if(state.bxOutUnsub) state.bxOutUnsub(); }catch(e){}
+      state.bxOutUnsub=db.collection('barters').where('fromEmail','==',me).limit(200)
+        .onSnapshot(function(snap){ bxApplyOutgoing(snap); }, function(){});
+    }catch(e){}
+  }
+
+  /* ---------- B. pastikan pendengar selalu aktif ---------- */
+  try{
+    var _ensure = (typeof bxEnsureListeners==='function') ? bxEnsureListeners : null;
+    bxEnsureListeners = function(){
+      try{ if(_ensure) _ensure(); }catch(e){}
+      try{
+        if(!sbOnline()) return;
+        if(!state.bxOutUnsub){ try{ bxListenMyOutgoing(); }catch(e){} }
+        if(!state.sbNotifUnsub){ try{ sbListenNotifications(); }catch(e){} }
+        if(!state.sbBarterUnsub && !state.sbBarterUnsub2 && !state.sbBarterUnsub3 && !state.sbBarterUnsub4){ try{ sbListenBarters(); }catch(e){} }
+      }catch(e){}
+    };
+  }catch(e){}
+
+  /* ---------- C. tanda langsung saat penawaran barter masuk ---------- */
+  try{
+    var _start = (typeof bxNotifyStart==='function') ? bxNotifyStart : null;
+    bxNotifyStart = function(b){
+      try{ if(_start) _start(b); }catch(e){}
+      try{ if(b && barterIsIncoming(b)) toast('\ud83d\udc8c Penawaran barter masuk \u2014 buka Barter untuk Terima / Tolak'); }catch(e){}
+    };
+  }catch(e){}
+
+  /* ---------- D. cegah notifikasi ganda ---------- */
+  try{
+    var _notify = (typeof notifyUser==='function') ? notifyUser : null;
+    var _recent = {};
+    notifyUser = function(email,title,body,kind){
+      try{
+        var key=String(email||'').toLowerCase()+'|'+String(title||'')+'|'+String(kind||'');
+        var now=Date.now();
+        if(_recent[key] && (now-_recent[key])<12000) return;
+        _recent[key]=now;
+      }catch(e){}
+      try{ if(_notify) return _notify(email,title,body,kind); }catch(e){}
+    };
+  }catch(e){}
+
+  /* ---------- E. segarkan saat app kembali ke depan ---------- */
+  try{
+    document.addEventListener('visibilitychange', function(){
+      try{ if(document.visibilityState==='visible'){ if(!state.bxOutUnsub){ bxListenMyOutgoing(); } barterTick(); } }catch(e){}
+    });
+  }catch(e){}
+})();
 </script>
 </body>
 </html>
