@@ -12381,6 +12381,136 @@ if(state.user){ enterApp(); }
 else { toggleAuth(); toggleAuth(); showScreen('auth'); }
 /* Bila Portal Admin sedang terbuka sebelum refresh, buka kembali otomatis. */
 try{ if(sessionStorage.getItem('mutari_admin_mode')==='1') openAdminPortal(); }catch(e){}
+/* =====================================================================================
+   PERBAIKAN MUTARI — MODUL 1: IDENTITAS PENULISAN CLOUD  (v1.12.0-p1)
+   -------------------------------------------------------------------------------------
+   MASALAH (ditemukan dari diagnosa langsung di Supabase):
+     Aturan keamanan Supabase `mutari_can_write` MENOLAK penulisan bila ada field
+     kepemilikan yang dikenali tetapi nilainya TIDAK cocok dengan akun yang login.
+     Field yang dikenali: uid, ownerUid, ownerKey, owner, email, userEmail, byEmail,
+     ownerEmail, from, to, targetEmail, authorEmail, reporterEmail.
+
+     - Dokumen BARTER ditulis dengan identitas LAWAN di ownerEmail/ownerUid/ownerKey,
+       sedangkan identitas PENGIRIM disimpan di fromUid/fromEmail — dan kedua field itu
+       TIDAK dikenali aturan. Akibatnya SETIAP penawaran barter DITOLAK server
+       (col `barters` = 0 baris di cloud) sehingga barter tak pernah sampai ke lawan
+       dan notifikasi tak pernah terkirim.
+     - Dokumen BARANG hanya mengandalkan ownerUid.
+
+   PERBAIKAN (aman, tanpa mengubah fitur lain):
+     Setiap dokumen barang & barter kini menyertakan `uid` dan `byEmail` milik akun
+     yang sedang menulis — dua field yang MEMANG dikenali aturan keamanan — sehingga
+     penulisan diizinkan server.
+   ===================================================================================== */
+(function(){
+  /* --- Barang: tambah uid + byEmail saat membangun dokumen cloud --- */
+  try{
+    if(typeof cloudItemDoc==='function'){
+      var _cloudItemDoc=cloudItemDoc;
+      cloudItemDoc=function(it){
+        var d=_cloudItemDoc(it);
+        try{ d.uid=cloudUid(); }catch(e){}
+        try{ d.byEmail=String((state.user&&state.user.email)||'').toLowerCase(); }catch(e){}
+        return d;
+      };
+    }
+  }catch(e){}
+  /* --- Barter: tambah uid + byEmail saat membangun dokumen barter --- */
+  try{
+    if(typeof bxBarterDoc==='function'){
+      var _bxBarterDoc=bxBarterDoc;
+      bxBarterDoc=function(b){
+        var d=_bxBarterDoc(b);
+        try{ d.uid=sbUid(); }catch(e){}
+        try{ d.byEmail=myEmail(); }catch(e){}
+        return d;
+      };
+    }
+  }catch(e){}
+})();
+/* =====================================================================================
+   PERBAIKAN MUTARI — MODUL 2: GAMBAR KE SUPABASE STORAGE  (v1.12.0-p2)
+   -------------------------------------------------------------------------------------
+   MASALAH:
+     Gambar barang disimpan sebagai base64 DI DALAM dokumen database. Akibatnya:
+       - dokumen membengkak, gambar bisa terpangkas sehingga tidak muncul,
+       - beranda berat karena memuat gambar base64.
+
+   PERBAIKAN (aman, tanpa mengubah fitur lain):
+     Setiap gambar barang diunggah ke Supabase Storage (bucket "app"), lalu yang
+     disimpan ke database hanya ALAMAT (URL) gambarnya. Bila unggah gagal, otomatis
+     kembali memakai cara lama (base64) supaya gambar tetap tersimpan.
+
+   CATATAN: bucket "app" harus bersifat PUBLIC agar gambar bisa tampil.
+   ===================================================================================== */
+(function(){
+  var _origThumb = (typeof cloudThumb === 'function') ? cloudThumb : null;
+  var BUCKET = 'app';
+  var CACHE = window.__MUTARI_IMG_URLS__ || (window.__MUTARI_IMG_URLS__ = {});
+  try{
+    var saved = localStorage.getItem('mutari_imgurls');
+    if(saved){ var o=JSON.parse(saved); if(o){ for(var k in o){ if(o[k]) CACHE[k]=o[k]; } } }
+  }catch(e){}
+  function persistCache(){ try{ localStorage.setItem('mutari_imgurls', JSON.stringify(CACHE)); }catch(e){} }
+  function hashStr(s){ var h=5381, i=s.length; while(i){ h=((h<<5)+h) ^ s.charCodeAt(--i); } return 'i'+(h>>>0).toString(36)+'_'+(s.length>>>0).toString(36); }
+  function sbClient(){
+    if(window.__MUTARI_SB__) return Promise.resolve(window.__MUTARI_SB__);
+    if(window.__MUTARI_READY__) return window.__MUTARI_READY__;
+    return Promise.reject(new Error('supabase belum siap'));
+  }
+  function fallback(src, cb){ try{ if(_origThumb){ _origThumb(src, cb); } else { cb(''); } }catch(e){ try{ cb(''); }catch(e2){} } }
+  /* Kecilkan gambar lalu jadikan blob JPEG (siap diunggah). */
+  function toBlob(src, cb){
+    try{
+      var img = new Image();
+      img.onload = function(){
+        try{
+          var MAX = (typeof CLOUD_IMG_MAX !== 'undefined') ? CLOUD_IMG_MAX : 640;
+          var w = img.width||MAX, h = img.height||MAX;
+          if(w>h && w>MAX){ h=Math.round(h*MAX/w); w=MAX; }
+          else if(h>=w && h>MAX){ w=Math.round(w*MAX/h); h=MAX; }
+          var c=document.createElement('canvas'); c.width=w; c.height=h;
+          var ctx=c.getContext('2d'); ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,w,h); ctx.drawImage(img,0,0,w,h);
+          if(c.toBlob){ c.toBlob(function(b){ cb(b||null); }, 'image/jpeg', 0.72); }
+          else { cb(null); }
+        }catch(e){ cb(null); }
+      };
+      img.onerror=function(){ cb(null); };
+      img.src=src;
+    }catch(e){ cb(null); }
+  }
+  cloudThumb = function(src, cb){
+    try{
+      if(!src){ cb(''); return; }
+      src = String(src);
+      if(src.indexOf('data:')!==0){ cb(src); return; }   /* sudah berupa URL */
+      var key = hashStr(src);
+      if(CACHE[key]){ cb(CACHE[key]); return; }           /* sudah pernah diunggah */
+      if(window.__MUTARI_STORAGE_PRIVATE__){ fallback(src, cb); return; }  /* storage tak publik -> cara lama */
+      toBlob(src, function(blob){
+        if(!blob){ fallback(src, cb); return; }
+        sbClient().then(function(sb){
+          if(!sb || !sb.storage){ fallback(src, cb); return; }
+          var uid=''; try{ uid = String(cloudUid()||''); }catch(e){}
+          var path = 'items/' + (uid||'anon') + '/' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8) + '.jpg';
+          sb.storage.from(BUCKET).upload(path, blob, { contentType:'image/jpeg', upsert:false, cacheControl:'31536000' })
+            .then(function(res){
+              if(res && res.error){ throw res.error; }
+              var pub = sb.storage.from(BUCKET).getPublicUrl(path);
+              var url = (pub && pub.data && pub.data.publicUrl) || '';
+              if(!url){ fallback(src, cb); return; }
+              /* Pastikan URL publik benar-benar bisa dibuka; kalau tidak, pakai cara lama. */
+              var probe = new Image();
+              probe.onload = function(){ CACHE[key]=url; persistCache(); cb(url); };
+              probe.onerror = function(){ window.__MUTARI_STORAGE_PRIVATE__=true; fallback(src, cb); };
+              probe.src = url;
+            })
+            .catch(function(){ fallback(src, cb); });
+        }).catch(function(){ fallback(src, cb); });
+      });
+    }catch(e){ fallback(src, cb); }
+  };
+})();
 </script>
 </body>
 </html>
