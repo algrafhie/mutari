@@ -11576,4 +11576,397 @@ async function createPassword(){
     if(res.rehash){ acc.pass=await hashPassword(v1); acc.hashed=true; }
     acc.time=Date.now(); state.accounts=accounts; LS.set('mutari_accounts',accounts);
   } else {
-    acc.pass=await ha
+    acc.pass=await hashPassword(v1); acc.hashed=true; acc.time=Date.now();
+    state.accounts=accounts; LS.set('mutari_accounts',accounts);
+  }
+  var cnm2=cleanName((accounts[email]&&accounts[email].name)||p.name||'');
+  state.user={name:isValidName(cnm2)?cnm2:'', email:email, avatar:'', verified:false, profileComplete:isValidName(cnm2)};
+  LS.set('mutari_user', state.user);
+  try{ applyAccount(email); }catch(e){}
+  enterApp();
+  toast(creating?'Akun dibuat! Data disimpan untuk email ini.':'Selamat datang kembali! Data akun dimuat.');
+}
+
+/* ---------- C. MULAI BERSIH v3 (sekali saat pembaruan) ----------
+   Membersihkan SELURUH data lokal MUTARI di perangkat ini: semua kunci penyimpanan
+   yang berawalan "mutari" (data global, data per akun 'mutari::<akun>::', snapshot
+   'mutari_acc::', daftar akun, pengaturan, dan sesi admin). Setelah dibersihkan,
+   aplikasi dimuat ulang agar tidak ada sisa data lama di memori.
+   Fitur dan sistem MUTARI tidak diubah, ditambah, maupun dihilangkan. */
+(function(){
+  try{
+    if(localStorage.getItem('mutari_v3_clean')==='1') return;
+    try{
+      for(var i=localStorage.length-1;i>=0;i--){
+        var k=localStorage.key(i);
+        if(k && k.indexOf('mutari')===0){ try{ localStorage.removeItem(k); }catch(e){} }
+      }
+    }catch(e){}
+    try{ localStorage.setItem('mutari_v3_clean','1'); }catch(e){}
+    try{ sessionStorage.clear(); }catch(e){}
+    try{ location.reload(); }catch(e){}
+  }catch(e){}
+})();
+
+/* ---------- D. KELUAR: JANGAN HAPUS DATA AKUN ---------- */
+function logout(){
+  var email=(state.user&&state.user.email)||null;
+  try{ closeSheet(); }catch(e){}
+  try{ var a=(fbState()&&fbState().auth)||null; if(a&&a.signOut) a.signOut(); }catch(e){}
+  state.user=null; LS.set('mutari_user',null);
+  try{ __oauthDone=false; bxOAuthClear(); }catch(e){}   /* v1.12.3: bersihkan penanda login Google */
+  __accNs='';                                   /* lepas namespace akun */
+  try{ resetLiveData(); }catch(e){}              /* hanya mereset memori, bukan data akun */
+  state.authMode='signin'; try{ toggleAuth(); toggleAuth(); }catch(e){}
+  try{ showScreen('auth'); }catch(e){}
+  toast(email?('Kamu sudah keluar. Data akun '+email+' tetap tersimpan.'):'Kamu sudah keluar');
+}
+
+
+/* =================== INIT =================== */
+(function(){ try{ socialMigrateComments(); }catch(e){} try{ migrateNotifLog(); }catch(e){} try{ checkTierUp(); }catch(e){} upgradeLegacyPasswords(); applyTheme(); if(typeof renderAccountList==='function') try{renderAccountList();}catch(e){} var av=$('#authVer'); if(av){ av.textContent='MUTARI v'+APP_VERSION+' · Build '+APP_BUILD;
+  try{ av.addEventListener('pointerdown',verDown); av.addEventListener('pointerup',verUp);
+       av.addEventListener('pointerleave',verCancel); av.addEventListener('pointercancel',verCancel); }catch(e){} }
+try{ applyDevMode(); }catch(e){} try{ syncNotifDot(); }catch(e){} try{ syncSanction(); }catch(e){} try{ cloudSyncMyViolations(); }catch(e){} try{ checkBannedOverlay(); }catch(e){} })();
+try{ window.__MUTARI_READY=true; }catch(e){}
+if(state.user){ enterApp(); }
+else { toggleAuth(); toggleAuth(); showScreen('auth'); }
+/* Bila Portal Admin sedang terbuka sebelum refresh, buka kembali otomatis. */
+try{ if(sessionStorage.getItem('mutari_admin_mode')==='1') openAdminPortal(); }catch(e){}
+/* =====================================================================================
+   PERBAIKAN MUTARI — MODUL 1: IDENTITAS PENULISAN CLOUD  (v1.12.0-p1)
+   -------------------------------------------------------------------------------------
+   MASALAH (ditemukan dari diagnosa langsung di Supabase):
+     Aturan keamanan Supabase `mutari_can_write` MENOLAK penulisan bila ada field
+     kepemilikan yang dikenali tetapi nilainya TIDAK cocok dengan akun yang login.
+     Field yang dikenali: uid, ownerUid, ownerKey, owner, email, userEmail, byEmail,
+     ownerEmail, from, to, targetEmail, authorEmail, reporterEmail.
+
+     - Dokumen BARTER ditulis dengan identitas LAWAN di ownerEmail/ownerUid/ownerKey,
+       sedangkan identitas PENGIRIM disimpan di fromUid/fromEmail — dan kedua field itu
+       TIDAK dikenali aturan. Akibatnya SETIAP penawaran barter DITOLAK server
+       (col `barters` = 0 baris di cloud) sehingga barter tak pernah sampai ke lawan
+       dan notifikasi tak pernah terkirim.
+     - Dokumen BARANG hanya mengandalkan ownerUid.
+
+   PERBAIKAN (aman, tanpa mengubah fitur lain):
+     Setiap dokumen barang & barter kini menyertakan `uid` dan `byEmail` milik akun
+     yang sedang menulis — dua field yang MEMANG dikenali aturan keamanan — sehingga
+     penulisan diizinkan server.
+   ===================================================================================== */
+(function(){
+  /* --- Barang: tambah uid + byEmail saat membangun dokumen cloud --- */
+  try{
+    if(typeof cloudItemDoc==='function'){
+      var _cloudItemDoc=cloudItemDoc;
+      cloudItemDoc=function(it){
+        var d=_cloudItemDoc(it);
+        try{ d.uid=cloudUid(); }catch(e){}
+        try{ d.byEmail=String((state.user&&state.user.email)||'').toLowerCase(); }catch(e){}
+        return d;
+      };
+    }
+  }catch(e){}
+  /* --- Barter: tambah uid + byEmail saat membangun dokumen barter --- */
+  try{
+    if(typeof bxBarterDoc==='function'){
+      var _bxBarterDoc=bxBarterDoc;
+      bxBarterDoc=function(b){
+        var d=_bxBarterDoc(b);
+        try{ d.uid=sbUid(); }catch(e){}
+        try{ d.byEmail=myEmail(); }catch(e){}
+        return d;
+      };
+    }
+  }catch(e){}
+})();
+/* =====================================================================================
+   PERBAIKAN MUTARI — MODUL 2: GAMBAR KE SUPABASE STORAGE  (v1.12.0-p2)
+   -------------------------------------------------------------------------------------
+   MASALAH:
+     Gambar barang disimpan sebagai base64 DI DALAM dokumen database. Akibatnya:
+       - dokumen membengkak, gambar bisa terpangkas sehingga tidak muncul,
+       - beranda berat karena memuat gambar base64.
+
+   PERBAIKAN (aman, tanpa mengubah fitur lain):
+     Setiap gambar barang diunggah ke Supabase Storage (bucket "app"), lalu yang
+     disimpan ke database hanya ALAMAT (URL) gambarnya. Bila unggah gagal, otomatis
+     kembali memakai cara lama (base64) supaya gambar tetap tersimpan.
+
+   CATATAN: bucket "app" harus bersifat PUBLIC agar gambar bisa tampil.
+   ===================================================================================== */
+(function(){
+  var _origThumb = (typeof cloudThumb === 'function') ? cloudThumb : null;
+  var BUCKET = 'app';
+  var CACHE = window.__MUTARI_IMG_URLS__ || (window.__MUTARI_IMG_URLS__ = {});
+  try{
+    var saved = localStorage.getItem('mutari_imgurls');
+    if(saved){ var o=JSON.parse(saved); if(o){ for(var k in o){ if(o[k]) CACHE[k]=o[k]; } } }
+  }catch(e){}
+  function persistCache(){ try{ localStorage.setItem('mutari_imgurls', JSON.stringify(CACHE)); }catch(e){} }
+  function hashStr(s){ var h=5381, i=s.length; while(i){ h=((h<<5)+h) ^ s.charCodeAt(--i); } return 'i'+(h>>>0).toString(36)+'_'+(s.length>>>0).toString(36); }
+  function sbClient(){
+    if(window.__MUTARI_SB__) return Promise.resolve(window.__MUTARI_SB__);
+    if(window.__MUTARI_READY__) return window.__MUTARI_READY__;
+    return Promise.reject(new Error('supabase belum siap'));
+  }
+  function fallback(src, cb){ try{ if(_origThumb){ _origThumb(src, cb); } else { cb(''); } }catch(e){ try{ cb(''); }catch(e2){} } }
+  /* Kecilkan gambar lalu jadikan blob JPEG (siap diunggah). */
+  function toBlob(src, cb){
+    try{
+      var img = new Image();
+      img.onload = function(){
+        try{
+          var MAX = (typeof CLOUD_IMG_MAX !== 'undefined') ? CLOUD_IMG_MAX : 640;
+          var w = img.width||MAX, h = img.height||MAX;
+          if(w>h && w>MAX){ h=Math.round(h*MAX/w); w=MAX; }
+          else if(h>=w && h>MAX){ w=Math.round(w*MAX/h); h=MAX; }
+          var c=document.createElement('canvas'); c.width=w; c.height=h;
+          var ctx=c.getContext('2d'); ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,w,h); ctx.drawImage(img,0,0,w,h);
+          if(c.toBlob){ c.toBlob(function(b){ cb(b||null); }, 'image/jpeg', 0.72); }
+          else { cb(null); }
+        }catch(e){ cb(null); }
+      };
+      img.onerror=function(){ cb(null); };
+      img.src=src;
+    }catch(e){ cb(null); }
+  }
+  cloudThumb = function(src, cb){
+    try{
+      if(!src){ cb(''); return; }
+      src = String(src);
+      if(src.indexOf('data:')!==0){ cb(src); return; }   /* sudah berupa URL */
+      var key = hashStr(src);
+      if(CACHE[key]){ cb(CACHE[key]); return; }           /* sudah pernah diunggah */
+      if(window.__MUTARI_STORAGE_PRIVATE__){ fallback(src, cb); return; }  /* storage tak publik -> cara lama */
+      toBlob(src, function(blob){
+        if(!blob){ fallback(src, cb); return; }
+        sbClient().then(function(sb){
+          if(!sb || !sb.storage){ fallback(src, cb); return; }
+          var uid=''; try{ uid = String(cloudUid()||''); }catch(e){}
+          var path = 'items/' + (uid||'anon') + '/' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8) + '.jpg';
+          sb.storage.from(BUCKET).upload(path, blob, { contentType:'image/jpeg', upsert:false, cacheControl:'31536000' })
+            .then(function(res){
+              if(res && res.error){ throw res.error; }
+              var pub = sb.storage.from(BUCKET).getPublicUrl(path);
+              var url = (pub && pub.data && pub.data.publicUrl) || '';
+              if(!url){ fallback(src, cb); return; }
+              /* Pastikan URL publik benar-benar bisa dibuka; kalau tidak, pakai cara lama. */
+              var probe = new Image();
+              probe.onload = function(){ CACHE[key]=url; persistCache(); cb(url); };
+              probe.onerror = function(){ window.__MUTARI_STORAGE_PRIVATE__=true; fallback(src, cb); };
+              probe.src = url;
+            })
+            .catch(function(){ fallback(src, cb); });
+        }).catch(function(){ fallback(src, cb); });
+      });
+    }catch(e){ fallback(src, cb); }
+  };
+})();
+/* =====================================================================================
+   PERBAIKAN MUTARI — MODUL 3: BARTER & NOTIFIKASI  (v1.12.0-p3)
+   -------------------------------------------------------------------------------------
+   MASALAH:
+     1) Sisi PENGIRIM penawaran hanya memantau barter lewat UID perangkat. Bila UID
+        berubah (sesi tamu dibuat ulang / login email menyusul), pembaruan dari lawan
+        (diterima/ditolak) TIDAK pernah sampai -> barter tampak "macet menunggu respon".
+     2) Pendengar notifikasi bisa tidak pernah dinyalakan bila pendengar barter sudah aktif.
+     3) Saat penawaran masuk, pengguna tidak langsung diberi tanda di layar.
+
+   PERBAIKAN (aman, tidak mengubah fitur lain):
+     A. Pendengar tambahan untuk barter KIRIMAN sendiri lewat EMAIL (bukan hanya UID),
+        sehingga status terbaru dari lawan selalu tersinkron.
+     B. Memastikan pendengar barter & notifikasi SELALU aktif (dinyalakan ulang bila perlu).
+     C. Tanda langsung di layar (toast) saat ada penawaran barter masuk.
+     D. Cegah notifikasi ganda (kiriman dobel dalam waktu berdekatan).
+   ===================================================================================== */
+(function(){
+  /* ---------- A. pendengar barter KIRIMAN sendiri lewat email ---------- */
+  function bxApplyOutgoing(snap){
+    var changed=false;
+    var FIELDS=['respondBy','method','methodBy','methodName','methodApproved','methodApprovedBy','insAmount',
+      'deposits','insurance','confirms','confirmPhotos','reviews','rewarded','refunded','reviewReleased',
+      'ship','trail','compensations','compClaimed','acceptedAt','cancelledAt','cancelledBy','notifiedStart','notifiedEnd'];
+    try{
+      snap.forEach(function(x){
+        var v=(x && x.data && x.data())||{};
+        var b=(state.barters||[]).find(function(y){ return y && (y.cloudId===x.id || y.id===x.id); });
+        if(!b) return;
+        if(v.status && b.status!==v.status){ b.status=v.status; changed=true; }
+        FIELDS.forEach(function(k){ if(v[k]!==undefined){ b[k]=v[k]; changed=true; } });
+        if(v.doneAt) b.doneTime=Number(v.doneAt);
+      });
+    }catch(e){}
+    if(changed){
+      try{ LS.set('mutari_barters',state.barters); }catch(e){}
+      try{ render(); }catch(e){}
+      try{ negoRefresh(); }catch(e){}
+      try{ barterTick(); }catch(e){}
+    }
+    return changed;
+  }
+  function bxListenMyOutgoing(){
+    try{
+      var db=sbDb(); if(!db) return;
+      var me=myEmail(); if(!me) return;
+      try{ if(state.bxOutUnsub) state.bxOutUnsub(); }catch(e){}
+      state.bxOutUnsub=db.collection('barters').where('fromEmail','==',me).limit(200)
+        .onSnapshot(function(snap){ bxApplyOutgoing(snap); }, function(){});
+    }catch(e){}
+  }
+
+  /* ---------- B. pastikan pendengar selalu aktif ---------- */
+  try{
+    var _ensure = (typeof bxEnsureListeners==='function') ? bxEnsureListeners : null;
+    bxEnsureListeners = function(){
+      try{ if(_ensure) _ensure(); }catch(e){}
+      try{
+        if(!sbOnline()) return;
+        if(!state.bxOutUnsub){ try{ bxListenMyOutgoing(); }catch(e){} }
+        if(!state.sbNotifUnsub){ try{ sbListenNotifications(); }catch(e){} }
+        if(!state.sbBarterUnsub && !state.sbBarterUnsub2 && !state.sbBarterUnsub3 && !state.sbBarterUnsub4){ try{ sbListenBarters(); }catch(e){} }
+      }catch(e){}
+    };
+  }catch(e){}
+
+  /* ---------- C. tanda langsung saat penawaran barter masuk ---------- */
+  try{
+    var _start = (typeof bxNotifyStart==='function') ? bxNotifyStart : null;
+    bxNotifyStart = function(b){
+      try{ if(_start) _start(b); }catch(e){}
+      try{ if(b && barterIsIncoming(b)) toast('\ud83d\udc8c Penawaran barter masuk \u2014 buka Barter untuk Terima / Tolak'); }catch(e){}
+    };
+  }catch(e){}
+
+  /* ---------- D. cegah notifikasi ganda ---------- */
+  try{
+    var _notify = (typeof notifyUser==='function') ? notifyUser : null;
+    var _recent = {};
+    notifyUser = function(email,title,body,kind){
+      try{
+        var key=String(email||'').toLowerCase()+'|'+String(title||'')+'|'+String(kind||'');
+        var now=Date.now();
+        if(_recent[key] && (now-_recent[key])<12000) return;
+        _recent[key]=now;
+      }catch(e){}
+      try{ if(_notify) return _notify(email,title,body,kind); }catch(e){}
+    };
+  }catch(e){}
+
+  /* ---------- E. segarkan saat app kembali ke depan ---------- */
+  try{
+    document.addEventListener('visibilitychange', function(){
+      try{ if(document.visibilityState==='visible'){ if(!state.bxOutUnsub){ bxListenMyOutgoing(); } barterTick(); } }catch(e){}
+    });
+  }catch(e){}
+})();
+/* =====================================================================================
+   PERBAIKAN MUTARI — MODUL 4: LOGIN MULTI-AKUN  (v1.12.0-p4)
+   -------------------------------------------------------------------------------------
+   MASALAH:
+     Halaman login hanya menampilkan SATU akun terakhir (ACCOUNT_HISTORY_MAX = 1),
+     sehingga pengguna yang punya beberapa akun di satu perangkat hanya melihat 1 akun.
+
+   PERBAIKAN (aman, tidak mengubah fitur lain):
+     Menampilkan SEMUA akun yang tersimpan di perangkat pada halaman login, di bawah
+     akun terakhir. Menekan salah satu akun memakai pemilih akun bawaan aplikasi
+     (pickAccount), jadi alurnya tetap sama. Daftar akun juga dipastikan tersimpan.
+   ===================================================================================== */
+(function(){
+  function bxEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+  function bxIsAdmin(m){ try{ return isAdminEmail(m); }catch(e){ return false; } }
+  function bxMoreAccounts(){
+    var el=document.getElementById('authAccounts');
+    if(!el) return;
+    var accounts=(typeof state!=='undefined' && state.accounts) ? state.accounts : null;
+    if(!accounts) return;
+    var emails=Object.keys(accounts).filter(function(m){ return !bxIsAdmin(m); })
+      .sort(function(a,b){ return ((accounts[b]&&accounts[b].time)||0)-((accounts[a]&&accounts[a].time)||0); });
+    if(emails.length<=1) return;
+    var html='';
+    emails.slice(1).forEach(function(m){
+      var a=accounts[m]||{};
+      var nm=a.name || String(m).split('@')[0];
+      var ini=String(nm).trim().charAt(0).toUpperCase()||'?';
+      html+='<button type="button" class="bx-acct-item" onclick="pickAccount(\''+bxEsc(m)+'\')" '
+        +'style="display:flex;align-items:center;gap:12px;width:100%;margin-top:10px;padding:12px 14px;border-radius:16px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:inherit;font:inherit;text-align:left;cursor:pointer">'
+        +'<span style="flex:0 0 38px;width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px">'+bxEsc(ini)+'</span>'
+        +'<span style="display:flex;flex-direction:column;line-height:1.25;min-width:0">'
+        +'<b style="font-size:14px">'+bxEsc(nm)+'</b>'
+        +'<small style="opacity:.6;font-size:12px;overflow:hidden;text-overflow:ellipsis">'+bxEsc(m)+'</small>'
+        +'</span></button>';
+    });
+    el.insertAdjacentHTML('beforeend', html);
+  }
+  try{
+    if(typeof renderAccountList==='function'){
+      var _r=renderAccountList;
+      renderAccountList=function(){ try{ _r(); }catch(e){} try{ bxMoreAccounts(); }catch(e){} };
+    }
+  }catch(e){}
+  /* Pastikan daftar akun selalu tersimpan & tampil saat halaman auth dibuka. */
+  try{ if(state && state.accounts && Object.keys(state.accounts).length){ LS.set('mutari_accounts', state.accounts); } }catch(e){}
+  try{
+    document.addEventListener('DOMContentLoaded', function(){ try{ if(document.getElementById('authAccounts')) bxMoreAccounts(); }catch(e){} });
+  }catch(e){}
+})();
+
+/* ================= MUTARI MODUL 6 (v1.12.0-p6) =================
+   PERBAIKAN: peta lokasi kirim pada panel detail barter.
+
+   MASALAH (temuan audit statis):
+     - negoRefresh() memanggil negMapInit(b) setiap kali panel barter
+       dirender dan b.ship.lat terisi.
+     - Tapi elemen <div id="negoMap"> TIDAK PERNAH ada di template
+       negoHtml() -> negMapInit() langsung `return` -> peta tidak tampil.
+
+   SOLUSI:
+     - Tambahkan <div id="negoMap"> ke HTML panel tepat setelah baris
+       lokasi (📍), hanya bila b.ship.lat ada. negMapInit() bawaan
+       aplikasi lalu merender peta Leaflet seperti seharusnya.
+
+   CATATAN (bintang ulasan & pratinjau bukti):
+     - "#revStars" dan "#negoProofPrev" adalah sisa versi lama.
+       Fitur yang sama SUDAH aktif di UI saat ini dengan nama lain:
+         * bintang ulasan  -> #bxStars  + bxStar(n)   (openReview)
+         * pratinjau bukti -> #bxProof  + bxProofPick (baris konfirmasi)
+       Karena itu TIDAK ditambahkan ulang, supaya tidak ada kontrol dobel.
+   =============================================================== */
+(function () {
+  try {
+    if (typeof negoHtml !== 'function') return;
+    var __origNegoHtml = negoHtml;
+
+    negoHtml = function (b) {
+      var html = __origNegoHtml.apply(this, arguments);
+      try {
+        if (!b || !b.ship || b.ship.lat == null) return html;
+        var s = String(html);
+        if (s.indexOf('id="negoMap"') >= 0) return html; /* sudah ada */
+
+        var mapDiv = '<div id="negoMap" style="height:190px;border-radius:14px;overflow:hidden;' +
+          'background:#111;border:1px solid rgba(255,255,255,.12);margin:10px 0"></div>';
+
+        /* sisipkan tepat setelah baris lokasi (📍 ...) */
+        var i = s.indexOf('\uD83D\uDCCD'); /* 📍 */
+        if (i >= 0) {
+          var j = s.indexOf('</div>', i);
+          if (j >= 0) {
+            var at = j + 6;
+            return s.slice(0, at) + mapDiv + s.slice(at);
+          }
+        }
+        /* cadangan: sisipkan sebelum area chat */
+        var m = '<div class="bx-chat">';
+        if (s.indexOf(m) >= 0) return s.replace(m, mapDiv + m);
+      } catch (e) {}
+      return html;
+    };
+
+    try { window.negoHtml = negoHtml; } catch (e) {}
+  } catch (e) {}
+})();
+
+</script>
+</body>
+</html>
