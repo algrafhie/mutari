@@ -12608,6 +12608,56 @@ try{ if(sessionStorage.getItem('mutari_admin_mode')==='1') openAdminPortal(); }c
     });
   }catch(e){}
 })();
+/* =====================================================================================
+   PERBAIKAN MUTARI — MODUL 4: LOGIN MULTI-AKUN  (v1.12.0-p4)
+   -------------------------------------------------------------------------------------
+   MASALAH:
+     Halaman login hanya menampilkan SATU akun terakhir (ACCOUNT_HISTORY_MAX = 1),
+     sehingga pengguna yang punya beberapa akun di satu perangkat hanya melihat 1 akun.
+
+   PERBAIKAN (aman, tidak mengubah fitur lain):
+     Menampilkan SEMUA akun yang tersimpan di perangkat pada halaman login, di bawah
+     akun terakhir. Menekan salah satu akun memakai pemilih akun bawaan aplikasi
+     (pickAccount), jadi alurnya tetap sama. Daftar akun juga dipastikan tersimpan.
+   ===================================================================================== */
+(function(){
+  function bxEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+  function bxIsAdmin(m){ try{ return isAdminEmail(m); }catch(e){ return false; } }
+  function bxMoreAccounts(){
+    var el=document.getElementById('authAccounts');
+    if(!el) return;
+    var accounts=(typeof state!=='undefined' && state.accounts) ? state.accounts : null;
+    if(!accounts) return;
+    var emails=Object.keys(accounts).filter(function(m){ return !bxIsAdmin(m); })
+      .sort(function(a,b){ return ((accounts[b]&&accounts[b].time)||0)-((accounts[a]&&accounts[a].time)||0); });
+    if(emails.length<=1) return;
+    var html='';
+    emails.slice(1).forEach(function(m){
+      var a=accounts[m]||{};
+      var nm=a.name || String(m).split('@')[0];
+      var ini=String(nm).trim().charAt(0).toUpperCase()||'?';
+      html+='<button type="button" class="bx-acct-item" onclick="pickAccount(\''+bxEsc(m)+'\')" '
+        +'style="display:flex;align-items:center;gap:12px;width:100%;margin-top:10px;padding:12px 14px;border-radius:16px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:inherit;font:inherit;text-align:left;cursor:pointer">'
+        +'<span style="flex:0 0 38px;width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px">'+bxEsc(ini)+'</span>'
+        +'<span style="display:flex;flex-direction:column;line-height:1.25;min-width:0">'
+        +'<b style="font-size:14px">'+bxEsc(nm)+'</b>'
+        +'<small style="opacity:.6;font-size:12px;overflow:hidden;text-overflow:ellipsis">'+bxEsc(m)+'</small>'
+        +'</span></button>';
+    });
+    el.insertAdjacentHTML('beforeend', html);
+  }
+  try{
+    if(typeof renderAccountList==='function'){
+      var _r=renderAccountList;
+      renderAccountList=function(){ try{ _r(); }catch(e){} try{ bxMoreAccounts(); }catch(e){} };
+    }
+  }catch(e){}
+  /* Pastikan daftar akun selalu tersimpan & tampil saat halaman auth dibuka. */
+  try{ if(state && state.accounts && Object.keys(state.accounts).length){ LS.set('mutari_accounts', state.accounts); } }catch(e){}
+  try{
+    document.addEventListener('DOMContentLoaded', function(){ try{ if(document.getElementById('authAccounts')) bxMoreAccounts(); }catch(e){} });
+  }catch(e){}
+})();
 </script>
 </body>
 </html>
